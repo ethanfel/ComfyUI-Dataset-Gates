@@ -54,3 +54,17 @@ def test_is_changed_differs_after_active_change(tmp_path, monkeypatch):
     pool.set_active(base, "p1", 1)
     h2 = node.GridImagePool.IS_CHANGED(index=-1, pool_id="p1")
     assert h1 != h2
+
+
+def test_profile_input_overrides_pool_id(tmp_path, monkeypatch):
+    base = str(tmp_path / "grid_pool")
+    monkeypatch.setattr(node, "_grid_pool_base", lambda: base)
+    import io
+    from PIL import Image
+    from gates import pool
+    buf = io.BytesIO(); Image.new("RGB", (4, 6), (255, 0, 0)).save(buf, "PNG")
+    pool.add_image(base, "prof1", buf.getvalue(), ts=1)   # images under the PROFILE id
+    n = node.GridImagePool()
+    # pool_id is "default" (empty) but profile points at prof1
+    img, mask, idx, count, label = n.run(index=-1, pool_id="default", profile="prof1")
+    assert count == 1 and idx == 0

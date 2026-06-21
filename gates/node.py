@@ -26,6 +26,11 @@ class GridImagePool:
                 "index": ("INT", {"default": -1, "min": -1, "max": 9999}),
                 "pool_id": ("STRING", {"default": "default"}),
             },
+            # optional companion input: a Pool Profile node feeds the profile id
+            # here; when connected it overrides pool_id (see `effective` below).
+            "optional": {
+                "profile": ("POOL_PROFILE",),
+            },
         }
 
     @staticmethod
@@ -35,13 +40,14 @@ class GridImagePool:
         idx = pool.resolve_slot(m, index)
         return base, m, idx
 
-    def run(self, index, pool_id="default"):
-        base, m, idx = self._resolve(index, pool_id)
+    def run(self, index, pool_id="default", profile=None):
+        effective = profile or pool_id
+        base, m, idx = self._resolve(index, effective)
         if idx < 0:
             img, mask = imaging.empty_outputs()
             return (img, mask, 0, 0, "")
         slot = m["slots"][idx]
-        d = pool.pool_dir(base, pool_id)
+        d = pool.pool_dir(base, effective)
         img = imaging.load_image_tensor(str(d / slot["image"]))
         h, w = int(img.shape[1]), int(img.shape[2])
         mask_name = slot.get("mask")
@@ -49,19 +55,20 @@ class GridImagePool:
         return (img, mask, idx, len(m["slots"]), slot.get("label", ""))
 
     @classmethod
-    def IS_CHANGED(cls, index, pool_id="default", **kwargs):
-        base, m, idx = cls._resolve(index, pool_id)
+    def IS_CHANGED(cls, index, pool_id="default", profile=None, **kwargs):
+        effective = profile or pool_id
+        base, m, idx = cls._resolve(index, effective)
         if idx < 0:
-            return imaging.change_hash(pool_id, -1, [])
+            return imaging.change_hash(effective, -1, [])
         slot = m["slots"][idx]
-        d = pool.pool_dir(base, pool_id)
+        d = pool.pool_dir(base, effective)
         mtimes = []
         for key in ("image", "mask"):
             name = slot.get(key)
             p = d / name if name else None
             mtimes.append(os.path.getmtime(p) if p and p.exists() else 0.0)
         # include active so manual selection changes invalidate cache
-        return imaging.change_hash(pool_id, f"{idx}:{m.get('active')}", mtimes)
+        return imaging.change_hash(effective, f"{idx}:{m.get('active')}", mtimes)
 
 
 NODE_CLASS_MAPPINGS = {"GridImagePool": GridImagePool}
