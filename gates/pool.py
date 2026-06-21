@@ -103,6 +103,14 @@ def resolve_slot(manifest, index_widget):
     return max(0, min(idx, n - 1))
 
 
+def set_label(base_dir, pool_id, index, label):
+    m = read_manifest(base_dir, pool_id)
+    if 0 <= index < len(m["slots"]):
+        m["slots"][index]["label"] = str(label)
+        write_manifest(base_dir, pool_id, m)
+    return m
+
+
 def rebuild_manifest(base_dir, pool_id):
     # Temporary stub — replaced in Task 7.
     return empty_manifest()

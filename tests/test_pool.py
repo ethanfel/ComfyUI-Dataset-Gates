@@ -85,3 +85,15 @@ def test_resolve_slot_rules():
     assert pool.resolve_slot(m, 0) == 0      # forced
     assert pool.resolve_slot(m, 9) == 2      # clamp high
     assert pool.resolve_slot({"active": 0, "slots": [], "next_seq": 1}, -1) == -1  # empty
+
+
+def test_set_label(tmp_path):
+    pool.add_image(str(tmp_path), "p1", b"a", ts=1)
+    m = pool.set_label(str(tmp_path), "p1", 0, "front view")
+    assert m["slots"][0]["label"] == "front view"
+
+
+def test_set_label_out_of_range_noop(tmp_path):
+    pool.add_image(str(tmp_path), "p1", b"a", ts=1)
+    m = pool.set_label(str(tmp_path), "p1", 5, "x")
+    assert m["slots"][0]["label"] == ""
