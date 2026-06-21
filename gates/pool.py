@@ -44,6 +44,23 @@ def write_manifest(base_dir, pool_id, manifest):
     return manifest
 
 
+def next_image_name(manifest):
+    return f"img_{manifest.get('next_seq', 1):04d}.png"
+
+
+def add_image(base_dir, pool_id, data, ts=0):
+    m = read_manifest(base_dir, pool_id)
+    name = next_image_name(m)
+    d = pool_dir(base_dir, pool_id)
+    d.mkdir(parents=True, exist_ok=True)
+    with open(d / name, "wb") as f:
+        f.write(data)
+    m["slots"].append({"image": name, "mask": None, "label": "", "added": ts})
+    m["next_seq"] = m.get("next_seq", 1) + 1
+    write_manifest(base_dir, pool_id, m)
+    return m
+
+
 def rebuild_manifest(base_dir, pool_id):
     # Temporary stub — replaced in Task 7.
     return empty_manifest()
