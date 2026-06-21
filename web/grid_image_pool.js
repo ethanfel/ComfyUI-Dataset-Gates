@@ -593,6 +593,10 @@ function setupGridNode(node) {
     if (node._countEl) node._countEl.textContent = `${n} image${n === 1 ? "" : "s"}`;
   };
 
+  // public hook for the Pool Profile companion: after it sets our pool_id widget
+  // to the selected profile id, it calls this to repaint the grid from that dir.
+  node._datasetePoolRefresh = () => node._gridRefresh();
+
   // initial width (a sensible wide default) + content-driven height; the node
   // stays freely resizable (no width floor) and the grid flex-wraps to fit.
   node._lastCount = 0;
