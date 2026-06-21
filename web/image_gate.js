@@ -90,7 +90,10 @@ function previewHeight(node) {
 }
 
 function resizePreview(node) {
-  if (node._previewWidget) node._previewWidget.computedHeight = previewHeight(node);
+  // Fully remove the preview element from layout when idle — collapsing the
+  // widget height to 0 isn't enough: the fixed-height <img> would still paint as
+  // a black box hanging below the node frame.
+  if (node._gate) node._gate.wrap.style.display = node._gateActive ? "flex" : "none";
   const w = node.size?.[0] || 220;
   node.setSize([w, node.computeSize()[1]]);
   node.setDirtyCanvas(true, true);
