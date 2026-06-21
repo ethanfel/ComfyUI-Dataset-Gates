@@ -67,3 +67,26 @@ def test_duplicate_duplicate_name_raises(tmp_path):
     pr.create_profile(str(tmp_path), "src", "id1")
     with pytest.raises(ValueError):
         pr.duplicate_profile(str(tmp_path), "id1", "src", "id2")
+
+def test_export_import_roundtrip(tmp_path):
+    src_base = str(tmp_path / "a"); dst_base = str(tmp_path / "b")
+    pr.create_profile(src_base, "setA", "id1", ts=1)
+    from pathlib import Path
+    (Path(src_base) / "id1" / "img_0001.png").write_bytes(b"hello")
+    zpath = str(tmp_path / "setA.zip")
+    pr.export_profile(src_base, "id1", zpath)
+    assert (tmp_path / "setA.zip").exists()
+    # import into a different base, fresh id
+    e = pr.import_profile(dst_base, zpath, "id99", ts=2)
+    assert e["id"] == "id99"
+    assert e["name"] == "setA"                       # name carried in zip meta
+    assert (Path(dst_base) / "id99" / "img_0001.png").read_bytes() == b"hello"
+
+def test_import_name_collision_suffixes(tmp_path):
+    base = str(tmp_path)
+    pr.create_profile(base, "setA", "id1")
+    from pathlib import Path
+    (Path(base) / "id1" / "f.png").write_bytes(b"x")
+    z = str(tmp_path / "e.zip"); pr.export_profile(base, "id1", z)
+    e = pr.import_profile(base, z, "id2")
+    assert e["name"] == "setA (2)"

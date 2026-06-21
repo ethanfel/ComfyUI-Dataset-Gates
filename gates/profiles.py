@@ -98,3 +98,43 @@ def duplicate_profile(base, src_id, name, new_id, ts=0):
     reg["profiles"].append(entry)
     write_registry(base, reg)
     return entry
+
+
+def export_profile(base, pid, dest_zip):
+    src = Path(base) / pid
+    if not src.exists():
+        raise KeyError(pid)
+    entry = find_by_id(read_registry(base), pid)
+    name = entry["name"] if entry else pid
+    with zipfile.ZipFile(dest_zip, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("profile_meta.json", json.dumps({"name": name}))
+        for f in src.rglob("*"):
+            if f.is_file():
+                z.write(f, arcname=str(Path("pool") / f.relative_to(src)))
+    return dest_zip
+
+
+def import_profile(base, src_zip, new_id, name=None, ts=0):
+    reg = read_registry(base)
+    meta_name = None
+    dst = Path(base) / new_id
+    dst.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(src_zip) as z:
+        names = z.namelist()
+        if "profile_meta.json" in names:
+            meta_name = json.loads(z.read("profile_meta.json")).get("name")
+        for n in names:
+            if n.startswith("pool/") and not n.endswith("/"):
+                target = dst / n[len("pool/"):]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with z.open(n) as srcf, open(target, "wb") as out:
+                    shutil.copyfileobj(srcf, out)
+    final = name or meta_name or new_id
+    candidate, i = final, 2
+    while find_by_name(reg, candidate):
+        candidate = f"{final} ({i})"
+        i += 1
+    entry = {"id": new_id, "name": candidate, "created": ts}
+    reg["profiles"].append(entry)
+    write_registry(base, reg)
+    return entry
