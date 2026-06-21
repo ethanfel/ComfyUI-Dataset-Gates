@@ -37,3 +37,19 @@ def test_list_images_bad_path_raises(tmp_path):
     import pytest
     with pytest.raises(NotADirectoryError):
         scan.list_images(str(tmp_path / "nope"))
+
+def test_resolve_index_ok():
+    assert scan.resolve_index(5, 0) == 0
+    assert scan.resolve_index(5, 4) == 4
+
+def test_resolve_index_out_of_range_raises():
+    import pytest
+    with pytest.raises(IndexError):
+        scan.resolve_index(5, 5)
+    with pytest.raises(IndexError):
+        scan.resolve_index(5, -1)
+
+def test_resolve_index_empty_raises():
+    import pytest
+    with pytest.raises(FileNotFoundError):
+        scan.resolve_index(0, 0)

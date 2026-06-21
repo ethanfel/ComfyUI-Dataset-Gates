@@ -28,3 +28,11 @@ def list_images(folder, depth=0):
                 results.append(str(cur / name))
     results.sort(key=lambda p: natural_key(os.path.relpath(p, root)))
     return results
+
+
+def resolve_index(count, index):
+    if count == 0:
+        raise FileNotFoundError("No images found in folder")
+    if index < 0 or index >= count:
+        raise IndexError(f"index {index} out of range: {count} images")
+    return index
