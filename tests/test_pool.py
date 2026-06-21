@@ -131,3 +131,23 @@ def test_set_mask_writes_sidecar(tmp_path):
 def test_set_mask_out_of_range_noop(tmp_path):
     m = pool.set_mask(str(tmp_path), "p1", 0, b"x")
     assert m["slots"] == []
+
+
+def test_reorder_slots_and_fixes_active(tmp_path):
+    pool.add_image(str(tmp_path), "p1", b"a", ts=1)
+    pool.add_image(str(tmp_path), "p1", b"b", ts=2)
+    pool.add_image(str(tmp_path), "p1", b"c", ts=3)
+    pool.set_active(str(tmp_path), "p1", 2)              # active = img_0003
+    m = pool.reorder(str(tmp_path), "p1", [2, 0, 1])     # new order: c, a, b
+    assert [s["image"] for s in m["slots"]] == ["img_0003.png", "img_0001.png", "img_0002.png"]
+    assert m["active"] == 0                              # active followed its slot
+
+
+def test_reorder_invalid_is_noop(tmp_path):
+    pool.add_image(str(tmp_path), "p1", b"a", ts=1)
+    pool.add_image(str(tmp_path), "p1", b"b", ts=2)
+    # not a permutation of range(2) -> unchanged
+    assert [s["image"] for s in pool.reorder(str(tmp_path), "p1", [0])["slots"]] == \
+        ["img_0001.png", "img_0002.png"]
+    assert [s["image"] for s in pool.reorder(str(tmp_path), "p1", [0, 5])["slots"]] == \
+        ["img_0001.png", "img_0002.png"]

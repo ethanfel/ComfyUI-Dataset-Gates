@@ -60,6 +60,13 @@ async def _set_mask(request):
     return web.json_response(m)
 
 
+@routes.post("/grid_pool/reorder")
+async def _reorder(request):
+    body = await request.json()
+    order = [int(i) for i in body["order"]]
+    return web.json_response(handlers.handle_reorder(_base(), body["pool_id"], order))
+
+
 @routes.get("/grid_pool/list")
 async def _list(request):
     pool_id = request.query.get("pool_id", "default")

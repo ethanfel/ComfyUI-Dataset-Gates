@@ -112,6 +112,20 @@ def set_label(base_dir, pool_id, index, label):
     return m
 
 
+def reorder(base_dir, pool_id, order):
+    m = read_manifest(base_dir, pool_id)
+    n = len(m["slots"])
+    # order must be a permutation of range(n) — otherwise leave untouched
+    if sorted(order) != list(range(n)):
+        return m
+    old_active = m.get("active", 0)
+    m["slots"] = [m["slots"][i] for i in order]
+    m["active"] = order.index(old_active) if old_active in order else 0
+    m["active"] = _clamp_active(m)
+    write_manifest(base_dir, pool_id, m)
+    return m
+
+
 def set_mask(base_dir, pool_id, index, mask_bytes):
     m = read_manifest(base_dir, pool_id)
     if not (0 <= index < len(m["slots"])):

@@ -90,6 +90,17 @@ async function removeSlot(node, index) {
   node.setDirtyCanvas(true, true);
 }
 
+async function reorderSlots(node, from, to) {
+  const n = (node._slots || []).length;
+  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return;
+  const order = Array.from({ length: n }, (_, k) => k);
+  const [moved] = order.splice(from, 1);
+  order.splice(to, 0, moved);
+  await postJson("reorder", { pool_id: getPoolId(node), order });
+  await refresh(node);
+  node.setDirtyCanvas(true, true);
+}
+
 // ---- rendering --------------------------------------------------------------
 
 function viewUrl(poolId, name, bust) {
@@ -167,11 +178,37 @@ async function refresh(node) {
     const cell = document.createElement("div");
     cell.className = "gip-cell" + (i === active ? " gip-active" : "");
 
+    // drag-to-reorder: the thumbnail is the drag handle, the cell is the target
+    cell.ondragover = (e) => {
+      if (node._dragFrom == null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "move";
+      cell.classList.add("gip-drop");
+    };
+    cell.ondragleave = () => cell.classList.remove("gip-drop");
+    cell.ondrop = (e) => {
+      if (node._dragFrom == null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      cell.classList.remove("gip-drop");
+      const from = node._dragFrom;
+      node._dragFrom = null;
+      reorderSlots(node, from, i);
+    };
+
     const thumb = document.createElement("img");
     thumb.className = "gip-thumb";
     thumb.src = viewUrl(poolId, slot.image, bust);
     thumb.title = `#${i}` + (slot.label ? ` — ${slot.label}` : "");
     thumb.onclick = () => setActive(node, i);
+    thumb.draggable = true;
+    thumb.ondragstart = (e) => {
+      node._dragFrom = i;
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(i));
+    };
+    thumb.ondragend = () => { node._dragFrom = null; };
     cell.appendChild(thumb);
 
     // index badge
@@ -436,6 +473,7 @@ function injectStyles() {
   .gip-cell { position:relative; width:96px; height:96px; border:2px solid transparent;
               border-radius:4px; overflow:hidden; background:#222; }
   .gip-cell.gip-active { border-color:#6cf; }
+  .gip-cell.gip-drop { border-color:#fc6; border-style:dashed; }
   .gip-thumb { width:100%; height:76px; object-fit:cover; display:block; cursor:pointer; }
   .gip-badge { position:absolute; top:2px; left:2px; font-size:10px; background:rgba(0,0,0,0.6);
                color:#fff; padding:0 4px; border-radius:3px; pointer-events:none; }

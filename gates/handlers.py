@@ -22,5 +22,9 @@ def handle_list(base, pool_id):
     return pool.read_manifest(base, pool_id)
 
 
+def handle_reorder(base, pool_id, order):
+    return pool.reorder(base, pool_id, order)
+
+
 def handle_set_mask(base, pool_id, index, mask_png_bytes):
     return pool.set_mask(base, pool_id, index, mask_png_bytes)  # Task 12
