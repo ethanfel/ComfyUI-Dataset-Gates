@@ -119,3 +119,15 @@ def test_read_corrupt_manifest_triggers_rebuild(tmp_path):
     (d / "manifest.json").write_text("{ not json")
     m = pool.read_manifest(str(tmp_path), "p1")
     assert [s["image"] for s in m["slots"]] == ["img_0001.png"]
+
+
+def test_set_mask_writes_sidecar(tmp_path):
+    pool.add_image(str(tmp_path), "p1", b"a", ts=1)
+    m = pool.set_mask(str(tmp_path), "p1", 0, b"MASKBYTES")
+    assert m["slots"][0]["mask"] == "img_0001.mask.png"
+    assert (tmp_path / "p1" / "img_0001.mask.png").read_bytes() == b"MASKBYTES"
+
+
+def test_set_mask_out_of_range_noop(tmp_path):
+    m = pool.set_mask(str(tmp_path), "p1", 0, b"x")
+    assert m["slots"] == []

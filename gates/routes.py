@@ -45,6 +45,21 @@ async def _label(request):
     return web.json_response(handlers.handle_label(_base(), body["pool_id"], int(body["index"]), body["label"]))
 
 
+@routes.post("/grid_pool/set_mask")
+async def _set_mask(request):
+    reader = await request.multipart()
+    pool_id, index, data = "default", 0, None
+    async for part in reader:
+        if part.name == "pool_id":
+            pool_id = (await part.text())
+        elif part.name == "index":
+            index = int(await part.text())
+        elif part.name == "mask":
+            data = await part.read(decode=False)
+    m = handlers.handle_set_mask(_base(), pool_id, index, data)
+    return web.json_response(m)
+
+
 @routes.get("/grid_pool/list")
 async def _list(request):
     pool_id = request.query.get("pool_id", "default")

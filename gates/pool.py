@@ -112,6 +112,19 @@ def set_label(base_dir, pool_id, index, label):
     return m
 
 
+def set_mask(base_dir, pool_id, index, mask_bytes):
+    m = read_manifest(base_dir, pool_id)
+    if not (0 <= index < len(m["slots"])):
+        return m
+    img_name = m["slots"][index]["image"]
+    mask_name = img_name.replace(".png", ".mask.png")
+    with open(pool_dir(base_dir, pool_id) / mask_name, "wb") as f:
+        f.write(mask_bytes)
+    m["slots"][index]["mask"] = mask_name
+    write_manifest(base_dir, pool_id, m)
+    return m
+
+
 def rebuild_manifest(base_dir, pool_id):
     d = pool_dir(base_dir, pool_id)
     m = empty_manifest()
