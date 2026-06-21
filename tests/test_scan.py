@@ -53,3 +53,18 @@ def test_resolve_index_empty_raises():
     import pytest
     with pytest.raises(FileNotFoundError):
         scan.resolve_index(0, 0)
+
+def test_stem():
+    assert scan.stem("/a/b/shot01.png") == "shot01"
+
+def test_sidecar_path():
+    assert scan.sidecar_path("/a/b/shot01.png") == "/a/b/shot01.txt"
+
+def test_read_sidecar_present(tmp_path):
+    (tmp_path / "x.png").write_bytes(b"i")
+    (tmp_path / "x.txt").write_text("a caption\n", encoding="utf-8")
+    assert scan.read_sidecar(str(tmp_path / "x.png")) == "a caption"
+
+def test_read_sidecar_missing_returns_empty(tmp_path):
+    (tmp_path / "x.png").write_bytes(b"i")
+    assert scan.read_sidecar(str(tmp_path / "x.png")) == ""

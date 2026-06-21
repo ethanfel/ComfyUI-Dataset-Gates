@@ -36,3 +36,19 @@ def resolve_index(count, index):
     if index < 0 or index >= count:
         raise IndexError(f"index {index} out of range: {count} images")
     return index
+
+
+def stem(image_path):
+    return os.path.splitext(os.path.basename(image_path))[0]
+
+
+def sidecar_path(image_path):
+    return os.path.splitext(image_path)[0] + ".txt"
+
+
+def read_sidecar(image_path):
+    p = sidecar_path(image_path)
+    if not os.path.isfile(p):
+        return ""
+    with open(p, "r", encoding="utf-8") as f:
+        return f.read().rstrip("\n")
