@@ -70,3 +70,13 @@ def rename_profile(base, pid, name):
     entry["name"] = name
     write_registry(base, reg)
     return entry
+
+
+def delete_profile(base, pid):
+    reg = read_registry(base)
+    reg["profiles"] = [p for p in reg["profiles"] if p["id"] != pid]
+    write_registry(base, reg)
+    d = Path(base) / pid
+    if d.exists():
+        shutil.rmtree(d)
+    return reg

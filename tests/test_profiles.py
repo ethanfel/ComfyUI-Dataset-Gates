@@ -47,3 +47,10 @@ def test_rename_to_existing_name_raises(tmp_path):
     pr.create_profile(str(tmp_path), "b", "id2")
     with pytest.raises(ValueError):
         pr.rename_profile(str(tmp_path), "id2", "a")
+
+def test_delete_profile_removes_dir_and_entry(tmp_path):
+    pr.create_profile(str(tmp_path), "a", "id1")
+    (tmp_path / "id1" / "img_0001.png").write_bytes(b"x")
+    pr.delete_profile(str(tmp_path), "id1")
+    assert not (tmp_path / "id1").exists()
+    assert pr.find_by_id(pr.read_registry(str(tmp_path)), "id1") is None
