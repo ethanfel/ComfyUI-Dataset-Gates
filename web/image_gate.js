@@ -176,6 +176,7 @@ function render(node) {
     btns.appendChild(run);
     maskControls(node).forEach((el) => btns.appendChild(el));
   }
+  updateMaskOverlay(node);
 }
 
 function showPaused(node, b64, routes) {
@@ -210,10 +211,62 @@ async function queueFromHere(node) {
 
 async function clearMask(node) {
   node._stickyMask = null;
+  node._stickyMaskOverlay = null;
   // zero the current run's stash: an empty mask part -> server stores b"" ->
   // mask_from_stash() treats it as falsy -> zeros.
   try { await postMask(node, new Blob([], { type: "image/png" })); } catch (e) { /* ignore */ }
   render(node);
+}
+
+// ---- mask overlay (show the painted region over the preview, semi-transparent)
+// The sticky mask is grayscale (white = painted). Recolor it into an RGBA layer
+// where alpha = paint intensity and RGB = a highlight color, so unpainted areas
+// are fully transparent and only the painted region tints the image.
+
+function maskToOverlay(b64) {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = im.naturalWidth || im.width;
+      c.height = im.naturalHeight || im.height;
+      const ctx = c.getContext("2d");
+      ctx.drawImage(im, 0, 0);
+      const d = ctx.getImageData(0, 0, c.width, c.height);
+      const px = d.data;
+      for (let i = 0; i < px.length; i += 4) {
+        const v = px[i];                        // grayscale luminance (R=G=B)
+        px[i] = 255; px[i + 1] = 64; px[i + 2] = 64;   // highlight = red
+        px[i + 3] = v;                          // alpha = paint intensity
+      }
+      ctx.putImageData(d, 0, 0);
+      resolve(c.toDataURL("image/png"));
+    };
+    im.onerror = reject;
+    im.src = `data:image/png;base64,${b64}`;
+  });
+}
+
+async function setStickyMask(node, b64) {
+  node._stickyMask = b64;
+  try {
+    node._stickyMaskOverlay = b64 ? await maskToOverlay(b64) : null;
+  } catch (e) {
+    node._stickyMaskOverlay = null;
+  }
+  updateMaskOverlay(node);
+}
+
+function updateMaskOverlay(node) {
+  const mi = node._gate?.maskImg;
+  if (!mi) return;
+  if (node._gateState && node._gateState !== "idle" && node._stickyMaskOverlay) {
+    mi.src = node._stickyMaskOverlay;
+    mi.style.display = "block";
+  } else {
+    mi.removeAttribute("src");
+    mi.style.display = "none";
+  }
 }
 
 // ---- mask editor (reuses ComfyUI MaskEditor, like the pool node) ------------
@@ -310,8 +363,9 @@ async function captureMask(node, ref) {
     ctx.putImageData(d, 0, 0);
     const maskBlob = await new Promise((res) => c.toBlob(res, "image/png"));
     await postMask(node, maskBlob);
-    // remember it so it auto-applies on the next run until the user clears it
-    try { node._stickyMask = await blobToB64(maskBlob); } catch (e) { /* ignore */ }
+    // remember it so it auto-applies on the next run until the user clears it,
+    // and build the colored overlay shown over the preview.
+    try { await setStickyMask(node, await blobToB64(maskBlob)); } catch (e) { /* ignore */ }
   } catch (e) {
     console.error("[dgate] mask capture failed", e);
   } finally {
@@ -371,8 +425,12 @@ function injectStyles() {
   const css = `
   .dgate-wrap { display:flex; flex-direction:column; gap:6px; box-sizing:border-box;
                 height:100%; min-height:0; }
-  .dgate-img { width:100%; flex:1 1 auto; min-height:0; object-fit:contain; display:block;
-               background:rgba(0,0,0,0.25); border-radius:4px; }
+  .dgate-imgbox { position:relative; flex:1 1 auto; min-height:0; width:100%;
+                  background:rgba(0,0,0,0.25); border-radius:4px; overflow:hidden; }
+  .dgate-img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain;
+               display:block; }
+  .dgate-mask { position:absolute; inset:0; width:100%; height:100%; object-fit:contain;
+                opacity:0.5; pointer-events:none; }
   .dgate-btns { display:flex; flex-wrap:wrap; gap:6px; align-items:center; flex:0 0 auto; }
   .dgate-btns button { font-size:12px; padding:3px 10px; cursor:pointer; border-radius:3px;
                        border:1px solid #555; color:#fff; }
@@ -405,6 +463,11 @@ function setupGateNode(node) {
 
   const wrap = document.createElement("div");
   wrap.className = "dgate-wrap";
+
+  // image + mask overlay share a container so both letterbox identically and
+  // stay pixel-aligned (object-fit:contain on same-size, same-aspect layers).
+  const imgbox = document.createElement("div");
+  imgbox.className = "dgate-imgbox";
   const img = document.createElement("img");
   img.className = "dgate-img";
   // capture the image aspect so the preview area scales with the node width
@@ -414,11 +477,17 @@ function setupGateNode(node) {
     node._imgAspect = h / w;
     resizePreview(node);
   };
+  const maskImg = document.createElement("img");
+  maskImg.className = "dgate-mask";
+  maskImg.style.display = "none";
+  imgbox.appendChild(img);
+  imgbox.appendChild(maskImg);
+
   const btns = document.createElement("div");
   btns.className = "dgate-btns";
-  wrap.appendChild(img);
+  wrap.appendChild(imgbox);
   wrap.appendChild(btns);
-  node._gate = { wrap, img, btns };
+  node._gate = { wrap, imgbox, img, maskImg, btns };
 
   node._previewWidget = node.addDOMWidget("gate_preview", "div", wrap, {
     serialize: false,
