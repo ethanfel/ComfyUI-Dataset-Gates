@@ -26,3 +26,13 @@ def test_arm_clears_stale_state():
     gb.GateBus.arm("1")
     assert "1" not in gb.GateBus.messages
     assert gb.GateBus.cancelled is False
+
+def test_mask_stash_roundtrip():
+    gb.GateBus.put_mask("9", b"PNGDATA")
+    assert gb.GateBus.pop_mask("9") == b"PNGDATA"
+    assert gb.GateBus.pop_mask("9") is None   # popped
+
+def test_arm_clears_mask():
+    gb.GateBus.put_mask("9", b"x")
+    gb.GateBus.arm("9")
+    assert gb.GateBus.pop_mask("9") is None

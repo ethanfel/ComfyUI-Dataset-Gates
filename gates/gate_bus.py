@@ -33,3 +33,11 @@ class GateBus:
                 raise GateCancelled()
             time.sleep(period)
         return cls.messages.pop(sid)
+
+    @classmethod
+    def put_mask(cls, node_id, data):
+        cls.masks[str(node_id)] = data
+
+    @classmethod
+    def pop_mask(cls, node_id):
+        return cls.masks.pop(str(node_id), None)
