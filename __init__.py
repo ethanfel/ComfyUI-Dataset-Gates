@@ -14,11 +14,13 @@ if __package__:
         NODE_DISPLAY_NAME_MAPPINGS as _LOADER_NAMES
     from .gates.gate import NODE_CLASS_MAPPINGS as _GATE_NODES, \
         NODE_DISPLAY_NAME_MAPPINGS as _GATE_NAMES
+    from .gates.textgate import NODE_CLASS_MAPPINGS as _TEXT_NODES, \
+        NODE_DISPLAY_NAME_MAPPINGS as _TEXT_NAMES
     from .gates import routes  # noqa: F401  (registers aiohttp routes on import)
-    from .gates import gate_server  # noqa: F401  (registers /datasete_gate/* routes)
+    from .gates import gate_server  # noqa: F401  (registers /datasete_gate/* + text routes)
 
-    NODE_CLASS_MAPPINGS = {**_POOL_NODES, **_LOADER_NODES, **_GATE_NODES}
-    NODE_DISPLAY_NAME_MAPPINGS = {**_POOL_NAMES, **_LOADER_NAMES, **_GATE_NAMES}
+    NODE_CLASS_MAPPINGS = {**_POOL_NODES, **_LOADER_NODES, **_GATE_NODES, **_TEXT_NODES}
+    NODE_DISPLAY_NAME_MAPPINGS = {**_POOL_NAMES, **_LOADER_NAMES, **_GATE_NAMES, **_TEXT_NAMES}
 else:  # pragma: no cover - exercised only under pytest collection
     NODE_CLASS_MAPPINGS = {}
     NODE_DISPLAY_NAME_MAPPINGS = {}
