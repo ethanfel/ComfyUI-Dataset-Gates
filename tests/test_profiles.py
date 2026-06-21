@@ -90,3 +90,19 @@ def test_import_name_collision_suffixes(tmp_path):
     z = str(tmp_path / "e.zip"); pr.export_profile(base, "id1", z)
     e = pr.import_profile(base, z, "id2")
     assert e["name"] == "setA (2)"
+
+def test_seed_profile_copies_pool_into_empty(tmp_path):
+    from pathlib import Path
+    base = str(tmp_path)
+    pr.create_profile(base, "A", "id1")                       # empty profile dir
+    (Path(base) / "srcpool").mkdir()                          # a pool's own-UUID dir
+    (Path(base) / "srcpool" / "img_0001.png").write_bytes(b"img")
+    (Path(base) / "srcpool" / "manifest.json").write_text("{}")
+    n = pr.seed_profile(base, "srcpool", "id1")
+    assert n == 2                                             # image + manifest copied
+    assert (Path(base) / "id1" / "img_0001.png").read_bytes() == b"img"
+
+def test_seed_profile_missing_source_is_noop(tmp_path):
+    base = str(tmp_path)
+    pr.create_profile(base, "A", "id1")
+    assert pr.seed_profile(base, "nope", "id1") == 0

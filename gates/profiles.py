@@ -114,6 +114,26 @@ def export_profile(base, pid, dest_zip):
     return dest_zip
 
 
+def seed_profile(base, from_id, profile_id):
+    """Copy a pool dir's files (images/masks/manifest) into a profile dir.
+
+    Used to save an Image Pool's current contents into a freshly-selected empty
+    profile. Copies top-level files only (the pool layout is flat); returns the
+    number of files copied. No-op (0) if the source dir is missing.
+    """
+    src = Path(base) / from_id
+    dst = Path(base) / profile_id
+    if not src.exists():
+        return 0
+    dst.mkdir(parents=True, exist_ok=True)
+    n = 0
+    for f in src.iterdir():
+        if f.is_file():
+            shutil.copy2(f, dst / f.name)
+            n += 1
+    return n
+
+
 def import_profile(base, src_zip, new_id, name=None, ts=0):
     reg = read_registry(base)
     meta_name = None

@@ -47,6 +47,13 @@ async def _duplicate(request):
     return web.json_response(e)
 
 
+@routes.post("/grid_pool/profiles/seed")
+async def _seed(request):
+    body = await request.json()
+    n = profiles.seed_profile(_base(), body["from"], body["id"])
+    return web.json_response({"copied": n})
+
+
 @routes.get("/grid_pool/profiles/export")
 async def _export(request):
     pid = request.query["id"]

@@ -3,9 +3,11 @@ import { api } from "../../scripts/api.js";
 
 // Pool Profile — companion to the Image Pool. A dropdown of named profiles
 // (registry under input/grid_pool/profiles.json) plus create/rename/delete/
-// duplicate/export/import actions. Selecting a profile propagates its id into
-// any connected Image Pool node's pool_id widget and refreshes that grid, so the
-// pool's images switch live at edit time. (Modeled on JSON-Manager/project_key.)
+// duplicate/export/import actions. The pool is switched ONLY when the user
+// actively picks a profile in the dropdown (or creates/duplicates/imports one) —
+// connecting the node never changes the pool. Selecting an *empty* profile while
+// a pool with images is connected offers to seed it from those images, so the
+// current pool is never silently lost. (Modeled on JSON-Manager/project_key.)
 
 const NODE = "PoolProfile";
 const POOL_NODE = "GridImagePool";
@@ -16,6 +18,13 @@ const R = "/grid_pool/profiles";
 async function listProfiles() {
   const r = await api.fetchApi(`${R}/list`);
   return (await r.json()).profiles || [];
+}
+
+async function listPoolSlots(poolId) {
+  try {
+    const r = await api.fetchApi(`/grid_pool/list?pool_id=${encodeURIComponent(poolId)}`);
+    return (await r.json()).slots || [];
+  } catch (e) { return []; }
 }
 
 async function postJson(path, body) {
@@ -61,40 +70,72 @@ function replaceWithCombo(node, name, values, callback) {
   if (saved && !vals.includes(saved)) vals.unshift(saved);
   node.widgets.splice(idx, 1);
   const combo = node.addWidget("combo", name, saved || vals[0], callback, { values: vals });
-  // move from the end back to the original slot
   node.widgets.splice(node.widgets.length - 1, 1);
   node.widgets.splice(idx, 0, combo);
   return combo;
 }
 
-// ---- propagation ------------------------------------------------------------
+// ---- connected pools + switching --------------------------------------------
 
-// Push the selected profile id into every connected Image Pool node's pool_id
-// widget (the grid keys off getPoolId), then refresh that grid.
-function propagate(node) {
-  const id = idWidget(node)?.value || "default";
+function connectedPools(node) {
+  const res = [];
   const out = node.outputs?.[0];
-  if (!out?.links) return;
+  if (!out?.links) return res;
   for (const linkId of out.links) {
     const link = node.graph?.links?.[linkId];
     if (!link) continue;
-    const target = node.graph?.getNodeById?.(link.target_id);
-    if (!target || target.type !== POOL_NODE) continue;
-    const pw = target.widgets?.find((w) => w.name === "pool_id");
-    if (pw) pw.value = id;
-    target._datasetePoolRefresh?.();
-    target.setDirtyCanvas?.(true, true);
+    const t = node.graph?.getNodeById?.(link.target_id);
+    if (t && t.type === POOL_NODE) res.push(t);
   }
+  return res;
 }
 
-function applySelection(node) {
+function setIdFromCombo(node) {
   const entry = currentEntry(node);
   const idw = idWidget(node);
   if (idw) idw.value = entry?.id || "";
-  propagate(node);
+}
+
+// Push the current profile id into every connected pool's pool_id widget (the
+// grid keys off getPoolId) and repaint. Only ever called from user actions.
+function switchPools(node) {
+  const id = idWidget(node)?.value || "default";
+  for (const pool of connectedPools(node)) {
+    const pw = pool.widgets?.find((w) => w.name === "pool_id");
+    if (pw) pw.value = id;
+    pool._datasetePoolRefresh?.();
+    pool.setDirtyCanvas?.(true, true);
+  }
   node.setDirtyCanvas?.(true, true);
 }
 
+// If the selected profile is empty and a connected pool has images, offer to
+// copy those images into the profile (so switching never loses the current pool).
+async function maybeSeed(node, entry) {
+  const profSlots = await listPoolSlots(entry.id);
+  if (profSlots.length > 0) return;                 // profile already has images
+  for (const pool of connectedPools(node)) {
+    const curId = pool.widgets?.find((w) => w.name === "pool_id")?.value;
+    if (!curId || curId === entry.id) continue;
+    const curSlots = await listPoolSlots(curId);
+    if (curSlots.length === 0) continue;
+    if (confirm(`Profile "${entry.name}" is empty. Copy the ${curSlots.length} current pool image(s) into it?`)) {
+      try { await postJson("seed", { from: curId, id: entry.id }); }
+      catch (err) { alert("Seed failed: " + err); }
+    }
+    return;                                          // seed from the first match only
+  }
+}
+
+// user-initiated: set id from the dropdown, optionally offer to seed, then switch
+async function selectProfile(node) {
+  setIdFromCombo(node);
+  const entry = currentEntry(node);
+  if (entry) await maybeSeed(node, entry);
+  switchPools(node);
+}
+
+// programmatic: refresh the dropdown options + hidden id only — never switches
 async function refreshList(node, selectName) {
   const profs = await listProfiles();
   node._profiles = profs;
@@ -105,8 +146,9 @@ async function refreshList(node, selectName) {
     combo.options.values = names.length ? names : [""];
     if (selectName !== undefined) combo.value = selectName;
     else if (!names.includes(combo.value)) combo.value = names[0] || "";
-    applySelection(node);
   }
+  setIdFromCombo(node);
+  node.setDirtyCanvas?.(true, true);
 }
 
 // ---- actions ----------------------------------------------------------------
@@ -117,6 +159,7 @@ async function actionCreate(node) {
   try {
     const e = await postJson("create", { name });
     await refreshList(node, e.name);
+    await selectProfile(node);     // new profile is empty → offer to seed current pool
   } catch (err) { alert("Create failed: " + err); }
 }
 
@@ -127,7 +170,7 @@ async function actionRename(node) {
   if (!name || name === e.name) return;
   try {
     await postJson("rename", { id: e.id, name });
-    await refreshList(node, name);
+    await refreshList(node, name);   // same id, no pool switch needed
   } catch (err) { alert("Rename failed: " + err); }
 }
 
@@ -139,6 +182,7 @@ async function actionDuplicate(node) {
   try {
     const ne = await postJson("duplicate", { id: e.id, name });
     await refreshList(node, ne.name);
+    await selectProfile(node);       // already has images → maybeSeed no-ops, just switch
   } catch (err) { alert("Duplicate failed: " + err); }
 }
 
@@ -148,7 +192,7 @@ async function actionDelete(node) {
   if (!confirm(`Delete profile "${e.name}"? This removes its images.`)) return;
   try {
     await postJson("delete", { id: e.id });
-    await refreshList(node);
+    await refreshList(node);          // update dropdown; leave the pool as-is
   } catch (err) { alert("Delete failed: " + err); }
 }
 
@@ -171,6 +215,7 @@ function actionImport(node) {
       if (!r.ok) throw new Error(await r.text());
       const e = await r.json();
       await refreshList(node, e.name);
+      await selectProfile(node);     // imported profile has images → just switch
     } catch (err) { alert("Import failed: " + err); }
   };
   input.click();
@@ -180,7 +225,8 @@ function actionImport(node) {
 
 function setupProfileNode(node) {
   hideWidget(idWidget(node));
-  replaceWithCombo(node, "profile", [], () => applySelection(node));
+  // combo callback = active user selection → switch (and maybe seed)
+  replaceWithCombo(node, "profile", [], () => { selectProfile(node); });
 
   node.addWidget("button", "➕ Create", null, () => actionCreate(node));
   node.addWidget("button", "✎ Rename", null, () => actionRename(node));
@@ -190,7 +236,7 @@ function setupProfileNode(node) {
   node.addWidget("button", "⬆ Import", null, () => actionImport(node));
 
   node.setSize(node.computeSize());
-  refreshList(node);   // async: populate the dropdown
+  refreshList(node);   // populate the dropdown; does NOT switch any pool
 }
 
 app.registerExtension({
@@ -206,25 +252,16 @@ app.registerExtension({
       return r;
     };
 
-    // loaded workflows restore the combo + profile_id after create — re-list and
-    // re-propagate the saved id once the graph is ready.
+    // on load the pool already has its saved pool_id, so just refresh the
+    // dropdown to show the saved name — no switching, no seeding.
     const onConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function () {
       const r = onConfigure?.apply(this, arguments);
       const node = this;
-      queueMicrotask(() => {
-        propagate(node);   // propagate saved id immediately
-        refreshList(node, profileWidget(node)?.value);
-      });
+      queueMicrotask(() => refreshList(node, profileWidget(node)?.value));
       return r;
     };
-
-    // when our output gets connected to a pool, propagate right away
-    const onConnectionsChange = nodeType.prototype.onConnectionsChange;
-    nodeType.prototype.onConnectionsChange = function () {
-      const r = onConnectionsChange?.apply(this, arguments);
-      propagate(this);
-      return r;
-    };
+    // NOTE: intentionally no onConnectionsChange handler — connecting a profile
+    // must never change the pool (the user switches via the dropdown).
   },
 });
