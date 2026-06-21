@@ -15,11 +15,17 @@ class GridImagePool:
 
     @classmethod
     def INPUT_TYPES(cls):
+        # pool_id is a per-node UUID owned by the JS extension. It must be a
+        # NORMAL input, not a "hidden" one: ComfyUI only populates hidden inputs
+        # for built-in types (UNIQUE_ID, PROMPT, ...), so a custom hidden
+        # "POOL_ID" would always arrive as None. The frontend, however, forwards
+        # every serialized widget value by name, so a declared STRING input
+        # backed by a (hidden-rendered) widget reliably reaches run().
         return {
             "required": {
                 "index": ("INT", {"default": -1, "min": -1, "max": 9999}),
+                "pool_id": ("STRING", {"default": "default"}),
             },
-            "hidden": {"pool_id": "POOL_ID"},
         }
 
     @staticmethod
