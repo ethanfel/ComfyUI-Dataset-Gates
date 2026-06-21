@@ -33,6 +33,11 @@ function getPoolId(node) {
   return (w?.value || "default").trim() || "default";
 }
 
+function newPoolId() {
+  return (crypto.randomUUID && crypto.randomUUID()) ||
+    `p_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+}
+
 // Hide the pool_id widget: it must still serialize (carries the per-node UUID
 // into the saved workflow) but should never be drawn or take vertical space.
 // In frontend 1.45 the switch is `widget.hidden` — isWidgetVisible() returns
@@ -457,7 +462,7 @@ function setupGridNode(node) {
   const pw = poolWidget(node);
   hideWidget(node, pw);
   if (pw && (!pw.value || pw.value === "default")) {
-    pw.value = (crypto.randomUUID && crypto.randomUUID()) || `p_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+    pw.value = newPoolId();
   }
 
   // Our node draws its own grid; ComfyUI must never reserve/draw an output-image
@@ -556,6 +561,24 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function () {
       const r = onConfigure?.apply(this, arguments);
       if (this._gridRefresh) this._gridRefresh();
+      return r;
+    };
+
+    // right-click "Detach pool (new id)" — a cloned node shares its source's
+    // pool_id; this gives it a fresh, independent pool.
+    const getExtraMenuOptions = nodeType.prototype.getExtraMenuOptions;
+    nodeType.prototype.getExtraMenuOptions = function (canvas, options) {
+      const r = getExtraMenuOptions?.apply(this, arguments);
+      const node = this;
+      options.push({
+        content: "Detach pool (new id)",
+        callback: () => {
+          const w = poolWidget(node);
+          if (w) w.value = newPoolId();
+          node._lastCount = -1;            // force a resize on the next refresh
+          if (node._gridRefresh) node._gridRefresh();
+        },
+      });
       return r;
     };
   },
