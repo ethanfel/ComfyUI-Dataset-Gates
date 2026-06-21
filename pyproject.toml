@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-datasete-gates"
 version = "0.1.0"
-description = "Dataset Gates — Image Pool (Grid) node for ComfyUI"
+description = "Dataset Gates — image pool, folder loader, and manual routing/text gates for ComfyUI dataset curation"
 requires-python = ">=3.10"
 
 [tool.comfy]
