@@ -1,0 +1,9 @@
+[project]
+name = "comfyui-datasete-gates"
+version = "0.1.0"
+description = "Dataset Gates — Image Pool (Grid) node for ComfyUI"
+requires-python = ">=3.10"
+
+[tool.comfy]
+PublisherId = "ethanfel"
+DisplayName = "ComfyUI Datasete Gates"
