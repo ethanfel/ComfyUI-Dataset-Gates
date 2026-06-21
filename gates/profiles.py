@@ -80,3 +80,21 @@ def delete_profile(base, pid):
     if d.exists():
         shutil.rmtree(d)
     return reg
+
+
+def duplicate_profile(base, src_id, name, new_id, ts=0):
+    reg = read_registry(base)
+    if not find_by_id(reg, src_id):
+        raise KeyError(src_id)
+    if find_by_name(reg, name):
+        raise ValueError(f"profile name already exists: {name}")
+    src = Path(base) / src_id
+    dst = Path(base) / new_id
+    if src.exists():
+        shutil.copytree(src, dst)
+    else:
+        dst.mkdir(parents=True, exist_ok=True)
+    entry = {"id": new_id, "name": name, "created": ts}
+    reg["profiles"].append(entry)
+    write_registry(base, reg)
+    return entry

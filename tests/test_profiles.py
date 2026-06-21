@@ -54,3 +54,16 @@ def test_delete_profile_removes_dir_and_entry(tmp_path):
     pr.delete_profile(str(tmp_path), "id1")
     assert not (tmp_path / "id1").exists()
     assert pr.find_by_id(pr.read_registry(str(tmp_path)), "id1") is None
+
+def test_duplicate_copies_images(tmp_path):
+    pr.create_profile(str(tmp_path), "src", "id1")
+    (tmp_path / "id1" / "img_0001.png").write_bytes(b"abc")
+    e = pr.duplicate_profile(str(tmp_path), "id1", "copy", "id2", ts=5)
+    assert e == {"id": "id2", "name": "copy", "created": 5}
+    assert (tmp_path / "id2" / "img_0001.png").read_bytes() == b"abc"
+
+def test_duplicate_duplicate_name_raises(tmp_path):
+    import pytest
+    pr.create_profile(str(tmp_path), "src", "id1")
+    with pytest.raises(ValueError):
+        pr.duplicate_profile(str(tmp_path), "id1", "src", "id2")
