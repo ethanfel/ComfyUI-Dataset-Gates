@@ -97,3 +97,25 @@ def test_set_label_out_of_range_noop(tmp_path):
     pool.add_image(str(tmp_path), "p1", b"a", ts=1)
     m = pool.set_label(str(tmp_path), "p1", 5, "x")
     assert m["slots"][0]["label"] == ""
+
+
+def test_rebuild_from_files(tmp_path):
+    d = tmp_path / "p1"
+    d.mkdir()
+    (d / "img_0001.png").write_bytes(b"a")
+    (d / "img_0001.mask.png").write_bytes(b"m")
+    (d / "img_0003.png").write_bytes(b"c")  # gap on purpose
+    m = pool.rebuild_manifest(str(tmp_path), "p1")
+    assert [s["image"] for s in m["slots"]] == ["img_0001.png", "img_0003.png"]
+    assert m["slots"][0]["mask"] == "img_0001.mask.png"
+    assert m["slots"][1]["mask"] is None
+    assert m["next_seq"] == 4        # max seq 3 + 1
+    assert m["active"] == 0
+
+
+def test_read_corrupt_manifest_triggers_rebuild(tmp_path):
+    d = tmp_path / "p1"; d.mkdir()
+    (d / "img_0001.png").write_bytes(b"a")
+    (d / "manifest.json").write_text("{ not json")
+    m = pool.read_manifest(str(tmp_path), "p1")
+    assert [s["image"] for s in m["slots"]] == ["img_0001.png"]

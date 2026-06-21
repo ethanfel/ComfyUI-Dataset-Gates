@@ -1,6 +1,7 @@
 """Pure storage layer for the Image Pool node. Stdlib only — no torch, no comfy."""
 import json
 import os
+import re
 from pathlib import Path
 
 
@@ -112,5 +113,18 @@ def set_label(base_dir, pool_id, index, label):
 
 
 def rebuild_manifest(base_dir, pool_id):
-    # Temporary stub — replaced in Task 7.
-    return empty_manifest()
+    d = pool_dir(base_dir, pool_id)
+    m = empty_manifest()
+    if not d.exists():
+        return m
+    imgs = sorted(p.name for p in d.glob("img_*.png") if not p.name.endswith(".mask.png"))
+    max_seq = 0
+    for name in imgs:
+        match = re.match(r"img_(\d+)\.png$", name)
+        seq = int(match.group(1)) if match else 0
+        max_seq = max(max_seq, seq)
+        mask_name = name.replace(".png", ".mask.png")
+        mask = mask_name if (d / mask_name).exists() else None
+        m["slots"].append({"image": name, "mask": mask, "label": "", "added": 0})
+    m["next_seq"] = max_seq + 1
+    return m
