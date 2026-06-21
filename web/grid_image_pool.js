@@ -107,11 +107,24 @@ function recomputeSize(node, count) {
   node._gridWidgetH = 2 * MARGIN + TOOLBAR_H + 6 + Math.min(full, cap);
 }
 
-function applySize(node) {
-  if (node._gridEl) node._gridEl.style.maxHeight = `${node._gridGridMax || 300}px`;
+// Grow the node to fit new content, but never shrink below the user's current
+// size (so a manual resize is respected) and never below the content floor.
+function resizeToContent(node) {
   const want = node.computeSize();
-  node.setSize([Math.max(node.size?.[0] || MIN_W, MIN_W), want[1]]);
+  const h = Math.max(node.size?.[1] || 0, want[1]);
+  node.setSize([Math.max(node.size?.[0] || MIN_W, MIN_W), h]);
   node.setDirtyCanvas(true, true);
+}
+
+// Keep _gridWidgetH current every refresh (so the getMinHeight floor is always
+// right), but only physically resize the node when the image count changes —
+// never on a plain select or label edit.
+function maybeResize(node, count) {
+  recomputeSize(node, count);
+  if (count !== node._lastCount) {
+    node._lastCount = count;
+    requestAnimationFrame(() => resizeToContent(node));
+  }
 }
 
 async function refresh(node) {
@@ -130,9 +143,12 @@ async function refresh(node) {
   const bust = Date.now();
   grid.innerHTML = "";
 
-  // size the node to fit the (new) content before/while rendering
-  recomputeSize(node, slots.length);
-  applySize(node);
+  // stash for the mask-editor button (needs the slot's image filename + pool id)
+  node._slots = slots;
+  node._poolId = poolId;
+
+  // keep computeSize current; only physically resize when the count changes
+  maybeResize(node, slots.length);
 
   if (slots.length === 0) {
     const empty = document.createElement("div");
@@ -264,6 +280,135 @@ function wireIngest(node, container, uploadBtn, fileInput) {
   };
 }
 
+// ---- mask editor (Phase 2) --------------------------------------------------
+// Opens ComfyUI's built-in MaskEditor for a slot and stores the painted mask
+// per-slot. Frontend 1.45 exposes no callback, so we point the editor at our
+// slot image via node.images, open it through the registered command, and poll
+// node.images for the editor's saved clipspace ref on save.
+
+function comfyAppClass() {
+  try { return app.constructor; } catch (e) { return null; }
+}
+
+function blobToImage(blob) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
+// The MaskEditor registers the painted image as this node's *output*. ComfyUI's
+// nodeOutputStore is keyed by NodeLocatorId (String(node.id) for root-graph
+// nodes, "<graphId>:<id>" inside subgraphs). Clear both the outputs and any
+// preview-image entries so nothing repopulates node.imgs.
+function clearNodeOutputs(node) {
+  try {
+    for (const map of [app.nodeOutputs, app.nodePreviewImages]) {
+      if (!map) continue;
+      for (const k of Object.keys(map)) {
+        if (k === String(node.id) || k.endsWith(`:${node.id}`)) delete map[k];
+      }
+    }
+  } catch (e) { /* best effort */ }
+}
+
+// drop the transient hints we set so the editor's source image never lingers as
+// a preview on our grid node (node.imgs itself is permanently suppressed below)
+function cleanupMaskState(node) {
+  if (node._maskPoll) { clearInterval(node._maskPoll); node._maskPoll = null; }
+  node._maskSlot = null;
+  try {
+    node.images = undefined;
+    node.previewMediaType = undefined;
+  } catch (e) { /* best effort */ }
+  clearNodeOutputs(node);
+  node.setDirtyCanvas?.(true, true);
+}
+
+async function captureMask(node, slot, ref) {
+  try {
+    const sub = ref.subfolder ?? "clipspace";
+    const type = ref.type ?? "input";
+    const url = `/view?filename=${encodeURIComponent(ref.filename)}&subfolder=${encodeURIComponent(sub)}&type=${encodeURIComponent(type)}&r=${Date.now()}`;
+    const resp = await api.fetchApi(url);
+    const blob = await resp.blob();
+    const img = await blobToImage(blob);
+    const c = document.createElement("canvas");
+    c.width = img.naturalWidth || img.width;
+    c.height = img.naturalHeight || img.height;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height);
+    const px = d.data;
+    // MaskEditor stores the mask in the ALPHA channel (opaque = painted). Bake
+    // alpha into a grayscale image so the backend (reads mask as L) sees
+    // white = painted region of interest. If polarity is reversed in practice,
+    // flip to `255 - a` here.
+    for (let i = 0; i < px.length; i += 4) {
+      const a = px[i + 3];
+      px[i] = px[i + 1] = px[i + 2] = a;
+      px[i + 3] = 255;
+    }
+    ctx.putImageData(d, 0, 0);
+    const maskBlob = await new Promise((res) => c.toBlob(res, "image/png"));
+    const fd = new FormData();
+    fd.append("pool_id", getPoolId(node));
+    fd.append("index", String(slot));
+    fd.append("mask", maskBlob, "mask.png");
+    await api.fetchApi(`${R}/set_mask`, { method: "POST", body: fd });
+  } catch (e) {
+    console.error("[gip] mask capture failed", e);
+  } finally {
+    cleanupMaskState(node);
+    await refresh(node);
+  }
+}
+
+function openMaskEditorForSlot(node, index) {
+  const slot = (node._slots || [])[index];
+  if (!slot) return;
+  cleanupMaskState(node);
+
+  const poolId = node._poolId || getPoolId(node);
+  // server reference the editor will load (no node.imgs -> no preview overlay)
+  node.images = [{ filename: slot.image, subfolder: `grid_pool/${poolId}`, type: "input" }];
+  node.previewMediaType = "image";
+  node.imageIndex = 0;
+  node._maskSlot = index;
+
+  const Comfy = comfyAppClass();
+  try { if (Comfy) Comfy.clipspace_return_node = node; } catch (e) { /* ignore */ }
+
+  // No save callback in 1.45 — poll for the editor writing the clipspace ref.
+  let waited = 0;
+  node._maskPoll = setInterval(() => {
+    waited += 300;
+    const ref = node.images && node.images[0];
+    if (node._maskSlot != null && ref && ref.subfolder === "clipspace") {
+      const slotIdx = node._maskSlot;
+      node._maskSlot = null;
+      clearInterval(node._maskPoll); node._maskPoll = null;
+      captureMask(node, slotIdx, ref);
+    } else if (waited > 10 * 60 * 1000) {
+      cleanupMaskState(node);  // safety timeout (user cancelled long ago)
+    }
+  }, 300);
+
+  // select our node so the command targets it, then open the editor
+  try { app.canvas?.selectNode?.(node); } catch (e) { /* ignore */ }
+  const cmd = app.extensionManager?.command;
+  if (cmd?.execute) {
+    cmd.execute("Comfy.MaskEditor.OpenMaskEditor");
+  } else if (Comfy?.open_maskeditor) {
+    Comfy.open_maskeditor();
+  } else {
+    console.error("[gip] no MaskEditor entry point found");
+    cleanupMaskState(node);
+  }
+}
+
 // ---- node setup -------------------------------------------------------------
 
 function injectStyles() {
@@ -315,6 +460,20 @@ function setupGridNode(node) {
     pw.value = (crypto.randomUUID && crypto.randomUUID()) || `p_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
   }
 
+  // Our node draws its own grid; ComfyUI must never reserve/draw an output-image
+  // preview on it. The MaskEditor registers the painted image as this node's
+  // output, and the nodeOutputStore's syncLegacyNodeImgs would then set
+  // node.imgs — which reserves preview space at the top and shoves the widgets
+  // down (the "gap"/detach). Pin node.imgs to undefined so that can't happen.
+  // The editor still opens fine via node.images + previewMediaType.
+  try {
+    Object.defineProperty(node, "imgs", {
+      configurable: true,
+      get() { return undefined; },
+      set() { /* suppress output-image preview */ },
+    });
+  } catch (e) { /* ignore */ }
+
   // build DOM
   const wrap = document.createElement("div");
   wrap.className = "gip-wrap";
@@ -349,10 +508,18 @@ function setupGridNode(node) {
 
   node._gridEl = grid;
   node._countEl = count;
+  node._openMaskEditorForSlot = (i) => openMaskEditorForSlot(node, i);
 
-  const gridWidget = node.addDOMWidget("grid", "div", wrap, { serialize: false });
-  // drive the node height from content so the toolbar never clips
-  gridWidget.computeSize = (width) => [width, node._gridWidgetH || 200];
+  // Size the DOM widget through the OPTION ComfyUI's layout actually reads
+  // (computeLayoutSize -> getMinHeight). Provide ONLY a min-height floor and NO
+  // getMaxHeight, so the grid FILLS the node and grows when the user resizes it.
+  // Pinning a max (or overriding widget.computeSize) locks the widget to a fixed
+  // size while the node frame keeps resizing — they diverge and the grid appears
+  // to detach / stop expanding on click.
+  node.addDOMWidget("grid", "div", wrap, {
+    serialize: false,
+    getMinHeight: () => node._gridWidgetH || 120,
+  });
 
   wireIngest(node, grid, uploadBtn, fileInput);
 
@@ -363,7 +530,9 @@ function setupGridNode(node) {
     if (node._countEl) node._countEl.textContent = `${n} image${n === 1 ? "" : "s"}`;
   };
 
-  // initial width + content-driven height
+  // initial width + content-driven height (sized for empty; the first refresh
+  // resizes once if the pool already has images)
+  node._lastCount = 0;
   recomputeSize(node, 0);
   node.setSize([Math.max(node.size?.[0] || 0, MIN_W), node.computeSize()[1]]);
 
