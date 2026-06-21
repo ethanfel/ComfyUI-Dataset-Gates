@@ -471,10 +471,12 @@ function injectStyles() {
   .gip-grid.gip-dragover { outline:2px dashed #6cf; outline-offset:-2px; }
   .gip-empty { font-size:12px; opacity:0.6; padding:12px; width:100%; text-align:center; }
   .gip-cell { position:relative; width:96px; height:96px; border:2px solid transparent;
-              border-radius:4px; overflow:hidden; background:#222; }
+              border-radius:4px; overflow:hidden; background:#222; transition:border-color .1s; }
+  .gip-cell:hover { border-color:#555; }
   .gip-cell.gip-active { border-color:#6cf; }
   .gip-cell.gip-drop { border-color:#fc6; border-style:dashed; }
-  .gip-thumb { width:100%; height:76px; object-fit:cover; display:block; cursor:pointer; }
+  .gip-thumb { width:100%; height:76px; object-fit:cover; display:block; cursor:grab; }
+  .gip-thumb:active { cursor:grabbing; }
   .gip-badge { position:absolute; top:2px; left:2px; font-size:10px; background:rgba(0,0,0,0.6);
                color:#fff; padding:0 4px; border-radius:3px; pointer-events:none; }
   .gip-maskdot { position:absolute; top:3px; left:50%; transform:translateX(-50%); width:8px; height:8px;
