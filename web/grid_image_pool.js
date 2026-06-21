@@ -10,14 +10,14 @@ const R = "/grid_pool";
 
 // grid geometry (kept in sync with the CSS below) — used to size the node so
 // the DOM widget never clips the toolbar and the node auto-grows with content.
-const CELL = 128;    // .gip-cell width/height
+const CELL = 96;     // .gip-cell width/height (thumbnail size)
 const GAP = 6;       // .gip-grid gap
 const PAD = 4;       // .gip-grid padding
 const TOOLBAR_H = 26;
 const ROW_H = CELL + GAP;
 const MAX_ROWS = 4;  // beyond this the grid scrolls internally
-const COLS = 4;      // fixed column count (node width is sized to fit this)
-const MIN_W = 560;
+const COLS = 4;      // fixed column count
+const MIN_W = 560;   // minimum node/grid width (the grey area)
 // ComfyUI insets DOM widgets by DEFAULT_MARGIN (10px) on every side and forces
 // our element to h-full/w-full of the (computedHeight - 2*MARGIN) box. Reserve
 // that or the grid eats into the toolbar's space.
