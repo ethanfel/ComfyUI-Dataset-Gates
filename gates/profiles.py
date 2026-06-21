@@ -46,3 +46,14 @@ def find_by_id(reg, pid):
 
 def find_by_name(reg, name):
     return next((p for p in reg["profiles"] if p["name"] == name), None)
+
+
+def create_profile(base, name, pid, ts=0):
+    reg = read_registry(base)
+    if find_by_name(reg, name):
+        raise ValueError(f"profile name already exists: {name}")
+    (Path(base) / pid).mkdir(parents=True, exist_ok=True)
+    entry = {"id": pid, "name": name, "created": ts}
+    reg["profiles"].append(entry)
+    write_registry(base, reg)
+    return entry

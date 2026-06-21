@@ -22,3 +22,15 @@ def test_find_helpers():
     assert pr.find_by_id(reg, "b")["name"] == "y"
     assert pr.find_by_name(reg, "x")["id"] == "a"
     assert pr.find_by_id(reg, "z") is None
+
+def test_create_profile(tmp_path):
+    e = pr.create_profile(str(tmp_path), "setA", "id1", ts=10)
+    assert e == {"id": "id1", "name": "setA", "created": 10}
+    assert (tmp_path / "id1").is_dir()
+    assert pr.find_by_name(pr.read_registry(str(tmp_path)), "setA")["id"] == "id1"
+
+def test_create_duplicate_name_raises(tmp_path):
+    import pytest
+    pr.create_profile(str(tmp_path), "setA", "id1")
+    with pytest.raises(ValueError):
+        pr.create_profile(str(tmp_path), "setA", "id2")
