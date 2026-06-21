@@ -7,3 +7,12 @@ requires-python = ">=3.10"
 [tool.comfy]
 PublisherId = "ethanfel"
 DisplayName = "ComfyUI Datasete Gates"
+
+[tool.pytest.ini_options]
+# The repo-root __init__.py is required by ComfyUI but breaks pytest's default
+# "prepend" collection if tests/ is a package (pytest walks up the __init__.py
+# chain and tries to import the root package, whose relative imports fail
+# outside ComfyUI). Keeping tests/ a non-package dir avoids that; pythonpath
+# makes `gates` importable from the repo root.
+pythonpath = ["."]
+testpaths = ["tests"]
