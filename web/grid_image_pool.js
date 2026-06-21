@@ -392,13 +392,12 @@ async function captureMask(node, slot, ref) {
     ctx.drawImage(img, 0, 0);
     const d = ctx.getImageData(0, 0, c.width, c.height);
     const px = d.data;
-    // MaskEditor stores the mask in the ALPHA channel (opaque = painted). Bake
-    // alpha into a grayscale image so the backend (reads mask as L) sees
-    // white = painted region of interest. If polarity is reversed in practice,
-    // flip to `255 - a` here.
+    // MaskEditor stores the mask in the ALPHA channel, but painted areas come
+    // through as alpha 0 — so invert (255 - a) when baking into a grayscale
+    // image, giving white = painted region of interest (what MASK expects).
     for (let i = 0; i < px.length; i += 4) {
       const a = px[i + 3];
-      px[i] = px[i + 1] = px[i + 2] = a;
+      px[i] = px[i + 1] = px[i + 2] = 255 - a;
       px[i + 3] = 255;
     }
     ctx.putImageData(d, 0, 0);
