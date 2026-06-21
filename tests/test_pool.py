@@ -49,3 +49,19 @@ def test_add_image_monotonic_after_growth(tmp_path):
     pool.add_image(str(tmp_path), "p1", b"a", ts=1)
     m = pool.add_image(str(tmp_path), "p1", b"b", ts=2)
     assert [s["image"] for s in m["slots"]] == ["img_0001.png", "img_0002.png"]
+
+
+def test_set_active_clamps(tmp_path):
+    pool.add_image(str(tmp_path), "p1", b"a", ts=1)
+    pool.add_image(str(tmp_path), "p1", b"b", ts=2)
+    assert pool.set_active(str(tmp_path), "p1", 1)["active"] == 1
+    assert pool.set_active(str(tmp_path), "p1", 9)["active"] == 1   # clamp high
+    assert pool.set_active(str(tmp_path), "p1", -5)["active"] == 0  # clamp low
+
+
+def test_resolve_slot_rules():
+    m = {"active": 1, "slots": [0, 1, 2], "next_seq": 4}   # 3 slots
+    assert pool.resolve_slot(m, -1) == 1     # manual -> active
+    assert pool.resolve_slot(m, 0) == 0      # forced
+    assert pool.resolve_slot(m, 9) == 2      # clamp high
+    assert pool.resolve_slot({"active": 0, "slots": [], "next_seq": 1}, -1) == -1  # empty

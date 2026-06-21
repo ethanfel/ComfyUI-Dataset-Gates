@@ -61,6 +61,29 @@ def add_image(base_dir, pool_id, data, ts=0):
     return m
 
 
+def _clamp_active(m):
+    n = len(m["slots"])
+    if n == 0:
+        return 0
+    return max(0, min(m.get("active", 0), n - 1))
+
+
+def set_active(base_dir, pool_id, index):
+    m = read_manifest(base_dir, pool_id)
+    m["active"] = index
+    m["active"] = _clamp_active(m)
+    write_manifest(base_dir, pool_id, m)
+    return m
+
+
+def resolve_slot(manifest, index_widget):
+    n = len(manifest["slots"])
+    if n == 0:
+        return -1
+    idx = manifest.get("active", 0) if index_widget == -1 else index_widget
+    return max(0, min(idx, n - 1))
+
+
 def rebuild_manifest(base_dir, pool_id):
     # Temporary stub — replaced in Task 7.
     return empty_manifest()
