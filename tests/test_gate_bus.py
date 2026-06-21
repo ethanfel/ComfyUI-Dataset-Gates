@@ -59,3 +59,9 @@ def test_wait_payload_cancel_flag_raises():
     gb.GateBus.cancelled = True
     with pytest.raises(gb.GateCancelled):
         gb.GateBus.wait_payload("p")
+
+def test_wait_payload_should_cancel_raises():
+    import pytest
+    gb.GateBus.arm("p")
+    with pytest.raises(gb.GateCancelled):
+        gb.GateBus.wait_payload("p", should_cancel=lambda: True)
