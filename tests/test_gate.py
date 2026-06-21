@@ -1,5 +1,6 @@
 # tests/test_gate.py
 import io
+import math
 
 import torch
 from PIL import Image
@@ -25,3 +26,12 @@ def test_mask_from_stash_decodes_png():
     img = torch.zeros((1, 6, 4, 3))
     m = gate.mask_from_stash(buf.getvalue(), img)
     assert m.shape == (1, 6, 4) and float(m.min()) > 0.99
+
+def test_is_changed_always_nan():
+    v = gate.ImageGate.IS_CHANGED(image=None, routes=2, unique_id="1")
+    assert math.isnan(v)
+
+def test_return_types_shape():
+    assert gate.ImageGate.RETURN_TYPES[0] == "MASK"
+    assert len(gate.ImageGate.RETURN_TYPES) == gate.MAX_ROUTES + 1
+    assert all(t == "IMAGE" for t in gate.ImageGate.RETURN_TYPES[1:])
