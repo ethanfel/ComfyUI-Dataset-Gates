@@ -10,13 +10,14 @@ const R = "/grid_pool";
 
 // grid geometry (kept in sync with the CSS below) — used to size the node so
 // the DOM widget never clips the toolbar and the node auto-grows with content.
-const CELL = 96;     // .gip-cell width/height
+const CELL = 128;    // .gip-cell width/height
 const GAP = 6;       // .gip-grid gap
 const PAD = 4;       // .gip-grid padding
 const TOOLBAR_H = 26;
 const ROW_H = CELL + GAP;
 const MAX_ROWS = 4;  // beyond this the grid scrolls internally
-const MIN_W = 280;
+const COLS = 4;      // fixed column count (node width is sized to fit this)
+const MIN_W = 560;
 // ComfyUI insets DOM widgets by DEFAULT_MARGIN (10px) on every side and forces
 // our element to h-full/w-full of the (computedHeight - 2*MARGIN) box. Reserve
 // that or the grid eats into the toolbar's space.
@@ -108,32 +109,31 @@ function viewUrl(poolId, name, bust) {
   return `/view?filename=${encodeURIComponent(name)}&type=input&subfolder=${sub}&r=${bust}`;
 }
 
-// Size the DOM widget to its content: ComfyUI reserves exactly this height for
-// the grid (below the index widget), so the toolbar never gets clipped, and the
-// node auto-grows as images are added — capped at MAX_ROWS, after which the grid
-// scrolls internally.
+// Lay the grid out as N fixed-width columns (N from the `columns` widget) and
+// size the node to fit them exactly. An explicit column count avoids depending
+// on ComfyUI's DOM-widget width tracking, which doesn't reliably follow the node
+// width in frontend 1.45 (columns would otherwise collapse on click).
 function recomputeSize(node, count) {
-  const width = Math.max(node.size?.[0] || MIN_W, MIN_W);
-  const inner = width - 20;                       // node body padding
-  const perRow = Math.max(1, Math.floor((inner - 2 * PAD + GAP) / ROW_H));
-  const rows = count > 0 ? Math.ceil(count / perRow) : 1;
+  const rows = count > 0 ? Math.ceil(count / COLS) : 1;
   const cap = MAX_ROWS * ROW_H - GAP + 2 * PAD;
   const full = count > 0 ? rows * ROW_H - GAP + 2 * PAD : 56;
   node._gridGridMax = cap;
   node._gridWidgetH = 2 * MARGIN + TOOLBAR_H + 6 + Math.min(full, cap);
+  // node width that fits exactly COLS cells: cells + gaps + grid padding + margins
+  const content = COLS * CELL + (COLS - 1) * GAP + 2 * PAD;
+  node._gridWidthWanted = Math.max(MIN_W, content + 2 * MARGIN);
 }
 
-// Grow the node to fit new content, but never shrink below the user's current
-// size (so a manual resize is respected) and never below the content floor.
+// Resize to the fixed-column width (exact) and content height (grow-only so a
+// manual taller resize is respected between content changes).
 function resizeToContent(node) {
-  const want = node.computeSize();
-  const h = Math.max(node.size?.[1] || 0, want[1]);
-  node.setSize([Math.max(node.size?.[0] || MIN_W, MIN_W), h]);
+  const w = node._gridWidthWanted || MIN_W;
+  const h = node.computeSize()[1];
+  node.setSize([w, Math.max(node.size?.[1] || 0, h)]);
   node.setDirtyCanvas(true, true);
 }
 
-// Keep _gridWidgetH current every refresh (so the getMinHeight floor is always
-// right), but only physically resize the node when the image count changes —
+// Recompute every refresh; physically resize only when the image count changes —
 // never on a plain select or label edit.
 function maybeResize(node, count) {
   recomputeSize(node, count);
@@ -464,18 +464,20 @@ function injectStyles() {
                  min-height:${TOOLBAR_H - 2}px; }
   .gip-toolbar button { font-size:11px; padding:2px 8px; cursor:pointer; }
   .gip-count { font-size:11px; opacity:0.7; margin-left:auto; }
-  /* scrolling body — takes the remaining space and scrolls past it */
-  .gip-grid { display:flex; flex-wrap:wrap; gap:${GAP}px; overflow-y:auto; align-content:flex-start;
+  /* scrolling body — explicit N columns (set via --gip-cols / inline style) so
+     the layout never depends on the DOM-widget width tracking */
+  .gip-grid { display:grid; grid-template-columns:repeat(${COLS}, ${CELL}px); gap:${GAP}px;
+              justify-content:start; align-content:start; overflow-y:auto;
               padding:${PAD}px; background:rgba(0,0,0,0.15); border-radius:4px;
               flex:1 1 auto; min-height:0; }
   .gip-grid.gip-dragover { outline:2px dashed #6cf; outline-offset:-2px; }
-  .gip-empty { font-size:12px; opacity:0.6; padding:12px; width:100%; text-align:center; }
-  .gip-cell { position:relative; width:96px; height:96px; border:2px solid transparent;
+  .gip-empty { font-size:12px; opacity:0.6; padding:12px; grid-column:1 / -1; text-align:center; }
+  .gip-cell { position:relative; width:${CELL}px; height:${CELL}px; border:2px solid transparent;
               border-radius:4px; overflow:hidden; background:#222; transition:border-color .1s; }
   .gip-cell:hover { border-color:#555; }
   .gip-cell.gip-active { border-color:#6cf; }
   .gip-cell.gip-drop { border-color:#fc6; border-style:dashed; }
-  .gip-thumb { width:100%; height:76px; object-fit:cover; display:block; cursor:grab; }
+  .gip-thumb { width:100%; height:${CELL - 20}px; object-fit:cover; display:block; cursor:grab; }
   .gip-thumb:active { cursor:grabbing; }
   .gip-badge { position:absolute; top:2px; left:2px; font-size:10px; background:rgba(0,0,0,0.6);
                color:#fff; padding:0 4px; border-radius:3px; pointer-events:none; }
@@ -575,11 +577,23 @@ function setupGridNode(node) {
     if (node._countEl) node._countEl.textContent = `${n} image${n === 1 ? "" : "s"}`;
   };
 
-  // initial width + content-driven height (sized for empty; the first refresh
-  // resizes once if the pool already has images)
+  // ComfyUI snaps the node to computeSize() on selection, and computeSize's WIDTH
+  // ignores DOM widgets — it collapses to ~the title/index width, clipping our
+  // grid on click. Floor the computed width to the column-fit width so the snap
+  // keeps the node wide enough. (Only width is touched; the height path through
+  // computeLayoutSize is untouched, so the DOM overlay stays in sync.)
+  const origComputeSize = node.computeSize;
+  node.computeSize = function (out) {
+    const sz = origComputeSize ? origComputeSize.call(this, out) : [MIN_W, 120];
+    sz[0] = Math.max(sz[0], node._gridWidthWanted || MIN_W);
+    return sz;
+  };
+
+  // initial width (fits COLS columns) + content-driven height; the first refresh
+  // resizes once if the pool already has images
   node._lastCount = 0;
   recomputeSize(node, 0);
-  node.setSize([Math.max(node.size?.[0] || 0, MIN_W), node.computeSize()[1]]);
+  node.setSize([node._gridWidthWanted || MIN_W, node.computeSize()[1]]);
 
   node._gridRefresh();
 }
