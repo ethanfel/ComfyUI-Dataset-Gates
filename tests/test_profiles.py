@@ -34,3 +34,16 @@ def test_create_duplicate_name_raises(tmp_path):
     pr.create_profile(str(tmp_path), "setA", "id1")
     with pytest.raises(ValueError):
         pr.create_profile(str(tmp_path), "setA", "id2")
+
+def test_rename_profile(tmp_path):
+    pr.create_profile(str(tmp_path), "old", "id1")
+    e = pr.rename_profile(str(tmp_path), "id1", "new")
+    assert e["name"] == "new"
+    assert pr.find_by_name(pr.read_registry(str(tmp_path)), "new")["id"] == "id1"
+
+def test_rename_to_existing_name_raises(tmp_path):
+    import pytest
+    pr.create_profile(str(tmp_path), "a", "id1")
+    pr.create_profile(str(tmp_path), "b", "id2")
+    with pytest.raises(ValueError):
+        pr.rename_profile(str(tmp_path), "id2", "a")

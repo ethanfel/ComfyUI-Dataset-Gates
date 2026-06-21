@@ -57,3 +57,16 @@ def create_profile(base, name, pid, ts=0):
     reg["profiles"].append(entry)
     write_registry(base, reg)
     return entry
+
+
+def rename_profile(base, pid, name):
+    reg = read_registry(base)
+    entry = find_by_id(reg, pid)
+    if not entry:
+        raise KeyError(pid)
+    other = find_by_name(reg, name)
+    if other and other["id"] != pid:
+        raise ValueError(f"profile name already exists: {name}")
+    entry["name"] = name
+    write_registry(base, reg)
+    return entry
