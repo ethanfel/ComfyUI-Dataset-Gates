@@ -51,6 +51,26 @@ def test_add_image_monotonic_after_growth(tmp_path):
     assert [s["image"] for s in m["slots"]] == ["img_0001.png", "img_0002.png"]
 
 
+def test_remove_slot_deletes_files_and_reindexes(tmp_path):
+    pool.add_image(str(tmp_path), "p1", b"a", ts=1)
+    pool.add_image(str(tmp_path), "p1", b"b", ts=2)
+    pool.add_image(str(tmp_path), "p1", b"c", ts=3)
+    m = pool.set_active(str(tmp_path), "p1", 2)          # active=2
+    m = pool.remove_slot(str(tmp_path), "p1", 0)         # drop first
+    assert [s["image"] for s in m["slots"]] == ["img_0002.png", "img_0003.png"]
+    assert not (tmp_path / "p1" / "img_0001.png").exists()
+    assert m["active"] == 1                              # shifted down
+
+
+def test_remove_active_clamps(tmp_path):
+    pool.add_image(str(tmp_path), "p1", b"a", ts=1)
+    pool.add_image(str(tmp_path), "p1", b"b", ts=2)
+    pool.set_active(str(tmp_path), "p1", 1)
+    m = pool.remove_slot(str(tmp_path), "p1", 1)         # removed the active last one
+    assert m["active"] == 0
+    assert len(m["slots"]) == 1
+
+
 def test_set_active_clamps(tmp_path):
     pool.add_image(str(tmp_path), "p1", b"a", ts=1)
     pool.add_image(str(tmp_path), "p1", b"b", ts=2)

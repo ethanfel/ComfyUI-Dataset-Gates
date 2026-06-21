@@ -61,6 +61,25 @@ def add_image(base_dir, pool_id, data, ts=0):
     return m
 
 
+def remove_slot(base_dir, pool_id, index):
+    m = read_manifest(base_dir, pool_id)
+    if index < 0 or index >= len(m["slots"]):
+        return m
+    slot = m["slots"].pop(index)
+    d = pool_dir(base_dir, pool_id)
+    for key in ("image", "mask"):
+        name = slot.get(key)
+        if name:
+            f = d / name
+            if f.exists():
+                f.unlink()
+    if index < m["active"]:
+        m["active"] -= 1
+    m["active"] = _clamp_active(m)
+    write_manifest(base_dir, pool_id, m)
+    return m
+
+
 def _clamp_active(m):
     n = len(m["slots"])
     if n == 0:
