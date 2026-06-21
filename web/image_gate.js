@@ -11,8 +11,9 @@ const NODE = "ImageGate";
 const MAX_ROUTES = 10;
 const R = "/datasete_gate";
 
-const PREVIEW_IMG_H = 240;   // fixed image area (object-fit:contain)
-const BTN_ROW_H = 64;        // buttons area (route buttons wrap + mask/stop)
+const MIN_IMG_H = 140;       // preview image area clamps (scales with node width)
+const MAX_IMG_H = 600;
+const BTN_ROW_H = 78;        // buttons area (route buttons wrap + actions)
 const MARGIN = 10;           // ComfyUI DOM-widget inset, matches the pool node
 
 // ---- routes widget + label store -------------------------------------------
@@ -43,7 +44,7 @@ function labelFor(node, route) {     // route is 1-based
 function setRouteLabel(node, route, text) {
   labelStore(node)[route - 1] = text;
   applyOutputLabels(node);
-  if (node._gateActive) renderButtons(node);   // live-update visible buttons
+  if (node._gateState && node._gateState !== "idle") render(node);  // live-update
   node.setDirtyCanvas?.(true, true);
 }
 
@@ -83,63 +84,136 @@ async function postMask(node, blob) {
   await api.fetchApi(`${R}/mask`, { method: "POST", body: fd });
 }
 
-// ---- preview DOM widget -----------------------------------------------------
+// ---- preview DOM widget + state machine -------------------------------------
+// States: "idle" (collapsed, before the first run), "paused" (waiting for a
+// route choice — route buttons shown), "resolved" (a route was picked — image +
+// mask kept, a "Run from here" re-queue button shown). The node never blanks
+// once a run has happened, so the previewed image and the sticky mask stay for
+// context and the painted mask is reused on the next run until cleared.
+
+function computeImgH(node) {
+  // image area scales with node WIDTH and the image's aspect ratio, so a wider
+  // node shows a bigger preview (getMinHeight is polled each layout frame).
+  const w = Math.max(120, (node.size?.[0] || 220) - 2 * MARGIN);
+  const h = Math.round(w * (node._imgAspect || 1));
+  return Math.max(MIN_IMG_H, Math.min(h, MAX_IMG_H));
+}
 
 function previewHeight(node) {
-  return node._gateActive ? 2 * MARGIN + PREVIEW_IMG_H + BTN_ROW_H : 0;
+  if (!node._gateState || node._gateState === "idle") return 0;
+  return 2 * MARGIN + computeImgH(node) + BTN_ROW_H;
 }
 
 function resizePreview(node) {
   // Fully remove the preview element from layout when idle — collapsing the
-  // widget height to 0 isn't enough: the fixed-height <img> would still paint as
-  // a black box hanging below the node frame.
-  if (node._gate) node._gate.wrap.style.display = node._gateActive ? "flex" : "none";
+  // widget height to 0 isn't enough: the <img> would still paint below the node.
+  const shown = node._gateState && node._gateState !== "idle";
+  if (node._gate) node._gate.wrap.style.display = shown ? "flex" : "none";
   const w = node.size?.[0] || 220;
   node.setSize([w, node.computeSize()[1]]);
   node.setDirtyCanvas(true, true);
 }
 
-function renderButtons(node) {
-  const { btns } = node._gate;
-  btns.innerHTML = "";
-  const routes = node._gateRoutes || getRouteCount(node);
-  for (let i = 1; i <= routes; i++) {
-    const b = document.createElement("button");
-    b.className = "dgate-route";
-    b.textContent = labelFor(node, i);
-    b.onclick = async () => { await postChoice(node, i); hidePreview(node); };
-    btns.appendChild(b);
-  }
+function hasMask(node) { return !!node._stickyMask; }
+
+function maskControls(node) {
+  // Edit / Clear buttons + a small "mask retained" badge, shared by both states.
+  const els = [];
   const edit = document.createElement("button");
   edit.className = "dgate-edit";
   edit.textContent = "🖌 Edit mask";
   edit.onclick = () => openMaskEditor(node);
-  btns.appendChild(edit);
-
-  const stop = document.createElement("button");
-  stop.className = "dgate-stop";
-  stop.textContent = "■ Stop";
-  stop.onclick = async () => { await postChoice(node, "__cancel__"); hidePreview(node); };
-  btns.appendChild(stop);
+  els.push(edit);
+  if (hasMask(node)) {
+    const clr = document.createElement("button");
+    clr.className = "dgate-clear";
+    clr.textContent = "✕ Clear mask";
+    clr.onclick = () => clearMask(node);
+    els.push(clr);
+  }
+  const badge = document.createElement("span");
+  badge.className = "dgate-status";
+  badge.textContent = hasMask(node) ? "🎭 mask retained" : "no mask";
+  badge.style.opacity = hasMask(node) ? "0.9" : "0.45";
+  els.push(badge);
+  return els;
 }
 
-function showPreview(node, b64, routes) {
-  node._gateActive = true;
+function render(node) {
+  const { btns } = node._gate;
+  btns.innerHTML = "";
+  const routes = node._gateRoutes || getRouteCount(node);
+
+  if (node._gateState === "paused") {
+    for (let i = 1; i <= routes; i++) {
+      const b = document.createElement("button");
+      b.className = "dgate-route";
+      b.textContent = labelFor(node, i);
+      b.onclick = async () => {
+        await postChoice(node, i);
+        showResolved(node, labelFor(node, i));
+      };
+      btns.appendChild(b);
+    }
+    maskControls(node).forEach((el) => btns.appendChild(el));
+    const stop = document.createElement("button");
+    stop.className = "dgate-stop";
+    stop.textContent = "■ Stop";
+    stop.onclick = async () => {
+      await postChoice(node, "__cancel__");
+      showResolved(node, "stopped");
+    };
+    btns.appendChild(stop);
+  } else if (node._gateState === "resolved") {
+    const status = document.createElement("span");
+    status.className = "dgate-status";
+    status.textContent = `✓ routed to ${node._gateChoice ?? "?"}`;
+    btns.appendChild(status);
+    const run = document.createElement("button");
+    run.className = "dgate-run";
+    run.textContent = "▶ Run from here";
+    run.onclick = () => queueFromHere(node);
+    btns.appendChild(run);
+    maskControls(node).forEach((el) => btns.appendChild(el));
+  }
+}
+
+function showPaused(node, b64, routes) {
+  node._gateState = "paused";
   node._gateRoutes = Math.max(1, Math.min(MAX_ROUTES, parseInt(routes, 10) || getRouteCount(node)));
   node._previewB64 = b64;
   node._gate.img.src = `data:image/png;base64,${b64}`;
-  renderButtons(node);
+  // sticky mask: re-stash the last painted mask for THIS run before the user
+  // picks a route. run() does arm()→clear, then send_preview→this event, then
+  // blocks in wait(), so this POST always lands before the choice is made.
+  if (node._stickyMask) {
+    postMask(node, b64ToBlob(node._stickyMask, "image/png")).catch(() => {});
+  }
+  render(node);
   resizePreview(node);
 }
 
-function hidePreview(node) {
-  node._gateActive = false;
-  node._previewB64 = null;
-  if (node._gate) {
-    node._gate.img.removeAttribute("src");
-    node._gate.btns.innerHTML = "";
-  }
+function showResolved(node, choiceLabel) {
+  node._gateState = "resolved";
+  node._gateChoice = choiceLabel;
+  render(node);
   resizePreview(node);
+}
+
+async function queueFromHere(node) {
+  try {
+    await app.queuePrompt(0, 1);
+  } catch (e) {
+    try { await app.queuePrompt(0); } catch (e2) { console.error("[dgate] queue failed", e2); }
+  }
+}
+
+async function clearMask(node) {
+  node._stickyMask = null;
+  // zero the current run's stash: an empty mask part -> server stores b"" ->
+  // mask_from_stash() treats it as falsy -> zeros.
+  try { await postMask(node, new Blob([], { type: "image/png" })); } catch (e) { /* ignore */ }
+  render(node);
 }
 
 // ---- mask editor (reuses ComfyUI MaskEditor, like the pool node) ------------
@@ -159,6 +233,15 @@ function blobToImage(blob) {
     img.onload = () => resolve(img);
     img.onerror = reject;
     img.src = URL.createObjectURL(blob);
+  });
+}
+
+function blobToB64(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result).split(",")[1] || "");
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
   });
 }
 
@@ -227,10 +310,13 @@ async function captureMask(node, ref) {
     ctx.putImageData(d, 0, 0);
     const maskBlob = await new Promise((res) => c.toBlob(res, "image/png"));
     await postMask(node, maskBlob);
+    // remember it so it auto-applies on the next run until the user clears it
+    try { node._stickyMask = await blobToB64(maskBlob); } catch (e) { /* ignore */ }
   } catch (e) {
     console.error("[dgate] mask capture failed", e);
   } finally {
     cleanupMaskState(node);
+    if (node._gateState && node._gateState !== "idle") render(node);  // show badge
   }
 }
 
@@ -285,15 +371,18 @@ function injectStyles() {
   const css = `
   .dgate-wrap { display:flex; flex-direction:column; gap:6px; box-sizing:border-box;
                 height:100%; min-height:0; }
-  .dgate-img { width:100%; height:${PREVIEW_IMG_H}px; object-fit:contain; display:block;
+  .dgate-img { width:100%; flex:1 1 auto; min-height:0; object-fit:contain; display:block;
                background:rgba(0,0,0,0.25); border-radius:4px; }
-  .dgate-btns { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .dgate-btns { display:flex; flex-wrap:wrap; gap:6px; align-items:center; flex:0 0 auto; }
   .dgate-btns button { font-size:12px; padding:3px 10px; cursor:pointer; border-radius:3px;
                        border:1px solid #555; color:#fff; }
   .dgate-route { background:rgba(40,90,140,0.9); }
   .dgate-route:hover { background:rgba(60,120,180,0.95); }
-  .dgate-edit { background:rgba(40,40,40,0.9); margin-left:auto; }
-  .dgate-stop { background:rgba(160,40,40,0.9); }
+  .dgate-edit { background:rgba(40,40,40,0.9); }
+  .dgate-clear { background:rgba(90,60,30,0.9); }
+  .dgate-run { background:rgba(40,130,70,0.95); }
+  .dgate-stop { background:rgba(160,40,40,0.9); margin-left:auto; }
+  .dgate-status { font-size:11px; opacity:0.8; padding:0 4px; align-self:center; }
   `;
   const style = document.createElement("style");
   style.id = "dgate-styles";
@@ -318,6 +407,13 @@ function setupGateNode(node) {
   wrap.className = "dgate-wrap";
   const img = document.createElement("img");
   img.className = "dgate-img";
+  // capture the image aspect so the preview area scales with the node width
+  img.onload = () => {
+    const w = img.naturalWidth || 1;
+    const h = img.naturalHeight || 1;
+    node._imgAspect = h / w;
+    resizePreview(node);
+  };
   const btns = document.createElement("div");
   btns.className = "dgate-btns";
   wrap.appendChild(img);
@@ -341,7 +437,7 @@ function setupGateNode(node) {
     };
   }
 
-  node._gateActive = false;
+  node._gateState = "idle";
   resizePreview(node);
 }
 
@@ -354,7 +450,7 @@ app.registerExtension({
       const d = e.detail || {};
       const node = app.graph?.getNodeById?.(parseInt(d.id, 10));
       if (!node || node.type !== NODE) return;
-      showPreview(node, d.image, d.routes);
+      showPaused(node, d.image, d.routes);
     });
   },
 
