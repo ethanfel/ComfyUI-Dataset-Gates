@@ -104,13 +104,26 @@ function previewHeight(node) {
   return 2 * MARGIN + computeImgH(node) + BTN_ROW_H;
 }
 
+// DomWidgets sizes the preview container from the widget width, which can lag
+// node.size[0] on this frontend — pin it so the image/buttons reflow to fill.
+function syncWidgetWidth(node) {
+  if (node._previewWidget) node._previewWidget.width = node.size?.[0] || 220;
+}
+
 function resizePreview(node) {
   // Fully remove the preview element from layout when idle — collapsing the
   // widget height to 0 isn't enough: the <img> would still paint below the node.
   const shown = node._gateState && node._gateState !== "idle";
   if (node._gate) node._gate.wrap.style.display = shown ? "flex" : "none";
   const w = node.size?.[0] || 220;
-  node.setSize([w, node.computeSize()[1]]);
+  // Image Pool pattern: grow to fit the content floor but preserve a larger
+  // user-set size (so the node stays freely resizable); collapse exactly when
+  // idle. Forcing the height on every call would lock the node.
+  const target = shown
+    ? Math.max(node.size?.[1] || 0, node.computeSize()[1])
+    : node.computeSize()[1];
+  node.setSize([w, target]);
+  syncWidgetWidth(node);
   node.setDirtyCanvas(true, true);
 }
 
@@ -493,6 +506,14 @@ function setupGateNode(node) {
     serialize: false,
     getMinHeight: () => previewHeight(node),
   });
+
+  // keep the preview width synced on manual resize so the image/buttons reflow
+  const onResize = node.onResize;
+  node.onResize = function () {
+    const r = onResize?.apply(this, arguments);
+    syncWidgetWidth(node);
+    return r;
+  };
 
   // sync visible route outputs to the routes widget, now and on change
   applyRouteCount(node, getRouteCount(node));

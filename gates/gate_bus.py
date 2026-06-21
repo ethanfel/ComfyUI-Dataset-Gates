@@ -9,12 +9,14 @@ class GateCancelled(Exception):
 class GateBus:
     messages = {}     # node_id(str) -> chosen int (1-based)
     masks = {}        # node_id(str) -> PNG bytes
+    payloads = {}     # node_id(str) -> arbitrary payload (e.g., edited text)
     cancelled = False
 
     @classmethod
     def arm(cls, node_id):
         cls.messages.pop(str(node_id), None)
         cls.masks.pop(str(node_id), None)
+        cls.payloads.pop(str(node_id), None)
         cls.cancelled = False
 
     @classmethod
@@ -41,3 +43,17 @@ class GateBus:
     @classmethod
     def pop_mask(cls, node_id):
         return cls.masks.pop(str(node_id), None)
+
+    @classmethod
+    def put_payload(cls, node_id, value):
+        cls.payloads[str(node_id)] = value
+
+    @classmethod
+    def wait_payload(cls, node_id, period=0.1, should_cancel=None):
+        sid = str(node_id)
+        while sid not in cls.payloads:
+            if cls.cancelled or (should_cancel is not None and should_cancel()):
+                cls.cancelled = False
+                raise GateCancelled()
+            time.sleep(period)
+        return cls.payloads.pop(sid)

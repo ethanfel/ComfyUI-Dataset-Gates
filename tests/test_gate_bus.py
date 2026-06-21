@@ -36,3 +36,32 @@ def test_arm_clears_mask():
     gb.GateBus.put_mask("9", b"x")
     gb.GateBus.arm("9")
     assert gb.GateBus.pop_mask("9") is None
+
+def test_payload_roundtrip():
+    gb.GateBus.arm("p")
+    gb.GateBus.put_payload("p", "hello edited")
+    assert gb.GateBus.wait_payload("p") == "hello edited"
+
+def test_payload_consumed():
+    gb.GateBus.arm("p")
+    gb.GateBus.put_payload("p", "x")
+    gb.GateBus.wait_payload("p")
+    assert "p" not in gb.GateBus.payloads
+
+def test_arm_clears_payload():
+    gb.GateBus.put_payload("p", "stale")
+    gb.GateBus.arm("p")
+    assert "p" not in gb.GateBus.payloads
+
+def test_wait_payload_cancel_flag_raises():
+    import pytest
+    gb.GateBus.arm("p")
+    gb.GateBus.cancelled = True
+    with pytest.raises(gb.GateCancelled):
+        gb.GateBus.wait_payload("p")
+
+def test_wait_payload_should_cancel_raises():
+    import pytest
+    gb.GateBus.arm("p")
+    with pytest.raises(gb.GateCancelled):
+        gb.GateBus.wait_payload("p", should_cancel=lambda: True)

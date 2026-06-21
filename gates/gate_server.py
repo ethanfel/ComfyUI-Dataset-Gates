@@ -42,3 +42,16 @@ async def _mask(request):
     if node_id is not None:
         GateBus.put_mask(node_id, data)
     return web.json_response({})
+
+
+def send_text(node_id, text):
+    PromptServer.instance.send_sync(
+        "datasete-textgate-show", {"id": str(node_id), "text": text or ""}
+    )
+
+
+@routes.post("/datasete_text_gate/pass")
+async def _text_pass(request):
+    post = await request.post()
+    GateBus.put_payload(post.get("id"), post.get("text", ""))
+    return web.json_response({})
