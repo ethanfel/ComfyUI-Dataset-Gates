@@ -23,22 +23,27 @@ The node currently has no explicit state. Add three:
 **Run from here** click → `app.queuePrompt(0, 1)` with `app.queuePrompt(0)`
 fallback — copied verbatim from the Image Gate's `queueFromHere`.
 
-## Sticky edited text
+## Sticky edited text (by intent, not text comparison)
 
-The Image Gate keeps its mask sticky; the Text Gate keeps its text. The live
-textarea IS the sticky store, gated by the last-seen input:
+The Image Gate keeps its mask sticky; the Text Gate keeps its text. Stickiness is
+keyed off **which action triggered the run**, not a text comparison — because the
+upstream feeding `text` is often non-deterministic (random/seeded prompts), so a
+text comparison would wrongly clobber the edit on every Run-from-here.
 
-- Track `node._tgInput` = the last incoming text the server pushed.
-- On each re-pause with `incoming`:
-  - if `incoming === node._tgInput` (upstream unchanged — the Run-from-here
-    case) → **keep** the current textarea value, so the gate re-runs *your*
-    edited version (including any edits made after Pass).
-  - else (a genuine upstream recompute) → overwrite the textarea with `incoming`.
-  - always set `node._tgInput = incoming`.
+- The "Run from here" button sets `node._tgKeepEdit = true` before re-queuing.
+- On the next re-pause (`datasete-textgate-show`):
+  - if `node._tgKeepEdit` → **keep** the current textarea value and clear the
+    flag, so the gate re-emits *your* edited text downstream.
+  - else (a normal toolbar Queue) → overwrite the textarea with the incoming
+    upstream text.
 
-Net: "Run from here" re-runs your version, but a real upstream change still
-surfaces instead of hiding behind a stale edit. `_tgInput` is per-session
-(not serialized) — a page reload starts fresh, which is fine.
+Net: Run-from-here always preserves your edit; a deliberate full Queue shows the
+fresh upstream text. `_tgKeepEdit` is per-session (not serialized).
+
+**Out of scope:** re-queuing still recomputes non-cacheable upstream nodes — that
+is inherent to ComfyUI and identical for the Image Gate. With intent-based
+stickiness the regenerated text is simply ignored, so it can't change the result;
+to skip the compute, Bypass (Ctrl+B) the upstream node manually.
 
 ## Verification
 

@@ -8,10 +8,13 @@ import { api } from "../../scripts/api.js";
 // edited text back. Outputs are static (text, signal) — no dynamic slots.
 //
 // After Pass, a "▶ Run from here" button re-queues the prompt (Image Gate
-// parity): the gate re-arms every run and IS_CHANGED is NaN, so cached upstream
-// means it re-pauses near-instantly. The edited text is sticky — kept across
-// re-runs while the upstream input is unchanged, so Run-from-here re-runs YOUR
-// version; a genuine upstream change still surfaces the new input.
+// parity): the gate re-arms every run and IS_CHANGED is NaN, so it re-pauses
+// each run. The edited text is sticky by INTENT: a Run-from-here re-queue keeps
+// YOUR edited text (even if a non-deterministic upstream regenerates it), while
+// a normal toolbar Queue shows whatever the upstream produced. Keying off which
+// button ran — not a text comparison — means a random/seeded upstream can't
+// clobber the edit on re-run. (Re-queuing still recomputes non-cacheable
+// upstream, as in any ComfyUI run; that regenerated text is simply ignored.)
 //
 // Sizing follows the Image Pool node: the editor is always present and FILLS the
 // node, with only a min-height floor (no max) so the node stays freely resizable
@@ -129,6 +132,7 @@ function setupTextGateNode(node) {
   runHere.textContent = "▶ Run from here";
   runHere.style.display = "none";
   runHere.onclick = async () => {
+    node._tgKeepEdit = true;   // tell the next re-pause to preserve this edit
     node._tg.status.textContent = "re-running…";
     await queueFromHere(node);
   };
@@ -173,13 +177,16 @@ app.registerExtension({
       const d = e.detail || {};
       const node = app.graph?.getNodeById?.(parseInt(d.id, 10));
       if (!node || node.type !== NODE || !node._tg) return;
-      const incoming = d.text || "";
-      // Sticky edit: keep the current editor text when the upstream input is
-      // unchanged (the Run-from-here case, upstream cached), so the gate re-runs
-      // YOUR version. Only overwrite on a genuine upstream change.
-      const unchanged = node._tgInput !== undefined && incoming === node._tgInput;
-      if (!unchanged) node._tg.area.value = incoming;
-      node._tgInput = incoming;
+      // Sticky edit by intent: a Run-from-here re-queue (the _tgKeepEdit flag)
+      // keeps YOUR edited text so the gate re-emits it downstream; a normal
+      // Queue shows whatever the upstream produced. Keying off the button —
+      // not a text comparison — means a non-deterministic upstream can't
+      // clobber the edit on re-run.
+      if (node._tgKeepEdit) {
+        node._tgKeepEdit = false;
+      } else {
+        node._tg.area.value = d.text || "";
+      }
       setState(node, "paused");
       try { node._tg.area.focus(); } catch (err) { /* ignore */ }
     });
