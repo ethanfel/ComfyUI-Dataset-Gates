@@ -7,6 +7,12 @@ import { api } from "../../scripts/api.js";
 // the server pushes via the "datasete-textgate-show" socket event and POSTs the
 // edited text back. Outputs are static (text, signal) — no dynamic slots.
 //
+// After Pass, a "▶ Run from here" button re-queues the prompt (Image Gate
+// parity): the gate re-arms every run and IS_CHANGED is NaN, so cached upstream
+// means it re-pauses near-instantly. The edited text is sticky — kept across
+// re-runs while the upstream input is unchanged, so Run-from-here re-runs YOUR
+// version; a genuine upstream change still surfaces the new input.
+//
 // Sizing follows the Image Pool node: the editor is always present and FILLS the
 // node, with only a min-height floor (no max) so the node stays freely resizable
 // and the textarea grows with it.
@@ -26,6 +32,30 @@ async function postPass(node, text) {
   fd.append("id", String(node.id));
   fd.append("text", text);
   await api.fetchApi(`${R}/pass`, { method: "POST", body: fd });
+}
+
+// ---- run-from-here + state --------------------------------------------------
+// States: "idle" (pre-run), "paused" (waiting for Pass), "passed" (Run-from-here
+// shown). Re-queuing the whole prompt is enough to "resume" — cached upstream
+// re-pauses the gate, matching the Image Gate's queueFromHere.
+
+async function queueFromHere(node) {
+  try {
+    await app.queuePrompt(0, 1);
+  } catch (e) {
+    try { await app.queuePrompt(0); } catch (e2) { console.error("[tgate] queue failed", e2); }
+  }
+}
+
+function setState(node, s) {
+  node._tgState = s;
+  const tg = node._tg;
+  if (!tg) return;
+  tg.pass.style.display = s === "passed" ? "none" : "";
+  tg.runHere.style.display = s === "passed" ? "" : "none";
+  if (s === "paused") tg.status.textContent = "edit, then Pass";
+  else if (s === "passed") tg.status.textContent = "passed — Run from here to re-run";
+  node.setDirtyCanvas?.(true, true);
 }
 
 // ---- sizing (Image Pool pattern) --------------------------------------------
@@ -59,6 +89,8 @@ function injectStyles() {
                        border:1px solid #555; color:#fff; }
   .tgate-pass { background:rgba(40,130,70,0.95); }
   .tgate-pass:hover { background:rgba(55,160,90,0.98); }
+  .tgate-run { background:rgba(40,90,140,0.95); }
+  .tgate-run:hover { background:rgba(60,120,180,0.98); }
   .tgate-status { font-size:11px; opacity:0.6; margin-left:auto; }
   `;
   const style = document.createElement("style");
@@ -81,21 +113,37 @@ function setupTextGateNode(node) {
 
   const btns = document.createElement("div");
   btns.className = "tgate-btns";
+
   const pass = document.createElement("button");
   pass.className = "tgate-pass";
   pass.textContent = "▶ Pass";
-  const status = document.createElement("span");
-  status.className = "tgate-status";
   pass.onclick = async () => {
     await postPass(node, area.value);
-    status.textContent = "passed";
+    setState(node, "passed");
   };
+
+  // Re-queue the prompt; cached upstream re-pauses the gate so you can run your
+  // edited text downstream again without recomputing the graph above it.
+  const runHere = document.createElement("button");
+  runHere.className = "tgate-run";
+  runHere.textContent = "▶ Run from here";
+  runHere.style.display = "none";
+  runHere.onclick = async () => {
+    node._tg.status.textContent = "re-running…";
+    await queueFromHere(node);
+  };
+
+  const status = document.createElement("span");
+  status.className = "tgate-status";
+
   btns.appendChild(pass);
+  btns.appendChild(runHere);
   btns.appendChild(status);
 
   wrap.appendChild(area);
   wrap.appendChild(btns);
-  node._tg = { wrap, area, status };
+  node._tg = { wrap, area, status, pass, runHere };
+  node._tgState = "idle";
 
   // FILLS the node: floor-only min height, no max (Image Pool pattern).
   node._tgWidget = node.addDOMWidget("textgate_editor", "div", wrap, {
@@ -125,10 +173,15 @@ app.registerExtension({
       const d = e.detail || {};
       const node = app.graph?.getNodeById?.(parseInt(d.id, 10));
       if (!node || node.type !== NODE || !node._tg) return;
-      node._tg.area.value = d.text || "";
-      node._tg.status.textContent = "edit, then Pass";
+      const incoming = d.text || "";
+      // Sticky edit: keep the current editor text when the upstream input is
+      // unchanged (the Run-from-here case, upstream cached), so the gate re-runs
+      // YOUR version. Only overwrite on a genuine upstream change.
+      const unchanged = node._tgInput !== undefined && incoming === node._tgInput;
+      if (!unchanged) node._tg.area.value = incoming;
+      node._tgInput = incoming;
+      setState(node, "paused");
       try { node._tg.area.focus(); } catch (err) { /* ignore */ }
-      node.setDirtyCanvas?.(true, true);
     });
   },
 
