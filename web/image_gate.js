@@ -215,6 +215,16 @@ function showResolved(node, choiceLabel) {
 }
 
 async function queueFromHere(node) {
+  // Fire the same command the Run button / Ctrl+Enter use, so the prompt
+  // actually EXECUTES. A bare app.queuePrompt(...) enqueues but skips the
+  // command's run setup, so the 1.47 frontend doesn't kick off the run (you'd
+  // have to press Run yourself). Fall back to app.queuePrompt on older
+  // frontends without the command registry.
+  const cmd = app.extensionManager?.command;
+  if (cmd?.execute) {
+    try { await cmd.execute("Comfy.QueuePrompt"); return; }
+    catch (e) { /* fall through to the legacy path */ }
+  }
   try {
     await app.queuePrompt(0, 1);
   } catch (e) {
