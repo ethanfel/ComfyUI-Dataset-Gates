@@ -20,8 +20,12 @@ The node currently has no explicit state. Add three:
 - **passed** — after Pass click. Textarea keeps the edited text, **Pass** hidden,
   **▶ Run from here** shown, status `passed — Run from here to re-run`.
 
-**Run from here** click → `app.queuePrompt(0, 1)` with `app.queuePrompt(0)`
-fallback — copied verbatim from the Image Gate's `queueFromHere`.
+**Run from here** click → executes the `Comfy.QueuePrompt` command via
+`app.extensionManager.command.execute(...)` — the same path the Run button and
+Ctrl+Enter use, so the prompt actually starts. A bare `app.queuePrompt(0, 1)`
+enqueues but skips the command's run setup, so the 1.47 frontend doesn't kick off
+execution (you'd have to press Run yourself). `app.queuePrompt` remains a fallback
+for older frontends without the command registry.
 
 ## Sticky edited text (by intent, not text comparison)
 
