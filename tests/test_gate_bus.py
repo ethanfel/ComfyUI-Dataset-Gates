@@ -65,3 +65,10 @@ def test_wait_payload_should_cancel_raises():
     gb.GateBus.arm("p")
     with pytest.raises(gb.GateCancelled):
         gb.GateBus.wait_payload("p", should_cancel=lambda: True)
+
+def test_wait_should_cancel_raises():
+    # image gate: ComfyUI Interrupt (should_cancel) must abort the wait too
+    gb.GateBus.arm("7")
+    with pytest.raises(gb.GateCancelled):
+        gb.GateBus.wait("7", should_cancel=lambda: True)
+    assert gb.GateBus.cancelled is False

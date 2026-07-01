@@ -27,10 +27,10 @@ class GateBus:
             cls.messages[str(node_id)] = int(message)
 
     @classmethod
-    def wait(cls, node_id, period=0.1):
+    def wait(cls, node_id, period=0.1, should_cancel=None):
         sid = str(node_id)
         while sid not in cls.messages:
-            if cls.cancelled:
+            if cls.cancelled or (should_cancel is not None and should_cancel()):
                 cls.cancelled = False
                 raise GateCancelled()
             time.sleep(period)

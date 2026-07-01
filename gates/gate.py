@@ -47,13 +47,14 @@ class ImageGate:
     def run(self, image, routes, unique_id):
         from comfy_execution.graph_utils import ExecutionBlocker
         from . import gate_server
+        import comfy.model_management as mm
 
         gate_bus.GateBus.arm(unique_id)
         gate_server.send_preview(unique_id, image, routes)
         try:
-            chosen_1 = gate_bus.GateBus.wait(unique_id)
+            chosen_1 = gate_bus.GateBus.wait(
+                unique_id, should_cancel=mm.processing_interrupted)
         except gate_bus.GateCancelled:
-            import comfy.model_management as mm
             raise mm.InterruptProcessingException()
 
         mask = mask_from_stash(gate_bus.GateBus.pop_mask(unique_id), image)
