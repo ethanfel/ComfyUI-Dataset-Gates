@@ -20,14 +20,18 @@ if __package__:
         NODE_DISPLAY_NAME_MAPPINGS as _PROF_NAMES
     from .gates.bucket_node import NODE_CLASS_MAPPINGS as _BUCKET_NODES, \
         NODE_DISPLAY_NAME_MAPPINGS as _BUCKET_NAMES
+    from .gates.sidecar_node import NODE_CLASS_MAPPINGS as _SC_NODES, \
+        NODE_DISPLAY_NAME_MAPPINGS as _SC_NAMES
     from .gates import routes  # noqa: F401  (registers aiohttp routes on import)
     from .gates import gate_server  # noqa: F401  (registers /datasete_gate/* + text routes)
     from .gates import profiles_routes  # noqa: F401  (registers /grid_pool/profiles/*)
 
     NODE_CLASS_MAPPINGS = {**_POOL_NODES, **_LOADER_NODES, **_GATE_NODES,
-                           **_TEXT_NODES, **_PROF_NODES, **_BUCKET_NODES}
+                           **_TEXT_NODES, **_PROF_NODES, **_BUCKET_NODES,
+                           **_SC_NODES}
     NODE_DISPLAY_NAME_MAPPINGS = {**_POOL_NAMES, **_LOADER_NAMES, **_GATE_NAMES,
-                                  **_TEXT_NAMES, **_PROF_NAMES, **_BUCKET_NAMES}
+                                  **_TEXT_NAMES, **_PROF_NAMES, **_BUCKET_NAMES,
+                                  **_SC_NAMES}
 else:  # pragma: no cover - exercised only under pytest collection
     NODE_CLASS_MAPPINGS = {}
     NODE_DISPLAY_NAME_MAPPINGS = {}
