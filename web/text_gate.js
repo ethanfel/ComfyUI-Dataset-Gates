@@ -28,6 +28,43 @@ const MIN_EDITOR_H = 140;   // textarea floor
 const BTN_ROW_H = 34;       // Pass button row
 const MARGIN = 10;          // ComfyUI DOM-widget inset, matches the other nodes
 
+// ---- protected-mode widgets -------------------------------------------------
+// `protected` (BOOLEAN toggle) + `stored_text` (hidden STRING) are real backend
+// widgets. When protected, the node acts as a plain text node: it outputs
+// stored_text and ignores upstream (no pause). The DOM textarea is the visible
+// editor and mirrors its value into stored_text so it persists and reaches run().
+
+function widgetByName(node, name) {
+  return node.widgets?.find((w) => w.name === name);
+}
+
+function isProtected(node) {
+  return !!widgetByName(node, "protected")?.value;
+}
+
+// mirror the editor text into the hidden stored_text widget (persist + backend)
+function syncStored(node) {
+  const w = widgetByName(node, "stored_text");
+  if (w) w.value = node._tg?.area?.value ?? "";
+}
+
+// collapse the auto-created stored_text widget out of the layout (pool_id trick)
+function hideStoredWidget(node) {
+  const w = widgetByName(node, "stored_text");
+  if (w) w.computeSize = () => [0, -4];
+}
+
+// reflect the persisted protected/stored_text state into the editor + UI
+function applyPersistedMode(node) {
+  if (!node._tg) return;
+  if (isProtected(node)) {
+    node._tg.area.value = widgetByName(node, "stored_text")?.value ?? "";
+    setState(node, "protected");
+  } else {
+    setState(node, "idle");
+  }
+}
+
 // ---- server call ------------------------------------------------------------
 
 async function postPass(node, text) {
@@ -64,10 +101,17 @@ function setState(node, s) {
   node._tgState = s;
   const tg = node._tg;
   if (!tg) return;
-  tg.pass.style.display = s === "passed" ? "none" : "";
+  // Pass is hidden once passed AND in protected mode (no pause there);
+  // Run-from-here only in the passed state.
+  tg.pass.style.display = (s === "passed" || s === "protected") ? "none" : "";
   tg.runHere.style.display = s === "passed" ? "" : "none";
   if (s === "paused") tg.status.textContent = "edit, then Pass";
   else if (s === "passed") tg.status.textContent = "passed — Run from here to re-run";
+  else if (s === "protected") tg.status.textContent = "🔒 protected — outputs this text (upstream ignored)";
+  else tg.status.textContent = "";
+  tg.area.placeholder = s === "protected"
+    ? "type text (used as a text node)…"
+    : "waiting for a run…";
   node.setDirtyCanvas?.(true, true);
 }
 
@@ -123,6 +167,8 @@ function setupTextGateNode(node) {
   area.placeholder = "waiting for a run…";
   // don't let typing/space toggle node selection or graph shortcuts
   area.onkeydown = (e) => e.stopPropagation();
+  // keep the hidden stored_text widget mirrored so edits persist + reach run()
+  area.oninput = () => syncStored(node);
 
   const btns = document.createElement("div");
   btns.className = "tgate-btns";
@@ -173,6 +219,22 @@ function setupTextGateNode(node) {
     return r;
   };
 
+  // protected-mode wiring: hide the stored_text widget, label + react to the
+  // toggle, and reflect the persisted mode/text into the editor.
+  hideStoredWidget(node);
+  const pw = widgetByName(node, "protected");
+  if (pw) {
+    pw.label = "🔒 Protected (text node)";
+    const prev = pw.callback;
+    pw.callback = function () {
+      const r = prev?.apply(this, arguments);
+      if (isProtected(node)) { syncStored(node); setState(node, "protected"); }
+      else setState(node, "idle");
+      return r;
+    };
+  }
+  applyPersistedMode(node);
+
   // sensible default size; the node stays freely resizable (no width floor lock)
   node.setSize([Math.max(node.size?.[0] || 0, MIN_W), node.computeSize()[1]]);
   syncWidgetWidth(node);
@@ -187,6 +249,7 @@ app.registerExtension({
       const d = e.detail || {};
       const node = app.graph?.getNodeById?.(parseInt(d.id, 10));
       if (!node || node.type !== NODE || !node._tg) return;
+      if (isProtected(node)) return;   // protected = no pause; ignore stray events
       // Sticky edit by intent: a Run-from-here re-queue (the _tgKeepEdit flag)
       // keeps YOUR edited text so the gate re-emits it downstream; a normal
       // Queue shows whatever the upstream produced. Keying off the button —
@@ -209,6 +272,15 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       const r = onNodeCreated?.apply(this, arguments);
       setupTextGateNode(this);
+      return r;
+    };
+
+    // loaded workflows restore protected + stored_text after create — re-apply
+    // the mode so the editor + UI match the saved state.
+    const onConfigure = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function () {
+      const r = onConfigure?.apply(this, arguments);
+      if (this._tg) applyPersistedMode(this);
       return r;
     };
   },

@@ -30,7 +30,9 @@ class TextGate:
                 "text": ("STRING", {"forceInput": True}),
                 "signal": (ANY, {}),
                 "protected": ("BOOLEAN", {"default": False}),
-                "stored_text": ("STRING", {"default": "", "multiline": True}),
+                # single-line so the frontend can fully hide it (the DOM editor
+                # is the real text box); the value still holds arbitrary text.
+                "stored_text": ("STRING", {"default": ""}),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
