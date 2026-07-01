@@ -4,7 +4,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {}
 
 
 class PoolProfile:
-    CATEGORY = "Datasete Gates"
+    CATEGORY = "Dataset Gates"
     FUNCTION = "run"
     RETURN_TYPES = ("POOL_PROFILE",)
     RETURN_NAMES = ("profile",)

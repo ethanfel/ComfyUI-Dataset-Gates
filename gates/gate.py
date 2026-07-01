@@ -25,7 +25,7 @@ def mask_from_stash(data, image):
 
 
 class ImageGate:
-    CATEGORY = "Datasete Gates"
+    CATEGORY = "Dataset Gates"
     FUNCTION = "run"
     RETURN_TYPES = ("MASK",) + ("IMAGE",) * MAX_ROUTES
     RETURN_NAMES = ("mask",) + tuple(f"route_{i + 1}" for i in range(MAX_ROUTES))
