@@ -8,7 +8,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {}
 
 
 class GridImagePool:
-    CATEGORY = "Datasete Gates"
+    CATEGORY = "Dataset Gates"
     FUNCTION = "run"
     RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "STRING")
     RETURN_NAMES = ("image", "mask", "index", "count", "label")

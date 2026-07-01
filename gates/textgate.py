@@ -15,7 +15,7 @@ ANY = AnyType("*")
 
 
 class TextGate:
-    CATEGORY = "Datasete Gates"
+    CATEGORY = "Dataset Gates"
     FUNCTION = "run"
     RETURN_TYPES = ("STRING", ANY)
     RETURN_NAMES = ("text", "signal")

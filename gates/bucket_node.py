@@ -39,7 +39,7 @@ def fit_mask(mask, W, H):
 
 
 class BucketResize:
-    CATEGORY = "Datasete Gates"
+    CATEGORY = "Dataset Gates"
     FUNCTION = "run"
     RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "STRING")
     RETURN_NAMES = ("image", "mask", "width", "height", "label")

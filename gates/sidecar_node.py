@@ -11,7 +11,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {}
 
 
 class Sidecar:
-    CATEGORY = "Datasete Gates"
+    CATEGORY = "Dataset Gates"
     FUNCTION = "run"
     RETURN_TYPES = ("SIDECAR",)
     RETURN_NAMES = ("sidecar",)
@@ -34,7 +34,7 @@ class Sidecar:
 
 
 class SaveImageSidecars:
-    CATEGORY = "Datasete Gates"
+    CATEGORY = "Dataset Gates"
     FUNCTION = "save"
     RETURN_TYPES = ()
     OUTPUT_NODE = True

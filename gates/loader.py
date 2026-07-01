@@ -27,7 +27,7 @@ def load_image_and_mask(path):
 
 
 class FolderImageLoader:
-    CATEGORY = "Datasete Gates"
+    CATEGORY = "Dataset Gates"
     FUNCTION = "run"
     RETURN_TYPES = ("IMAGE", "STRING", "MASK", "STRING", "INT")
     RETURN_NAMES = ("image", "text", "mask", "filename", "index")
