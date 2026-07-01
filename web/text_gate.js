@@ -48,10 +48,15 @@ function syncStored(node) {
   if (w) w.value = node._tg?.area?.value ?? "";
 }
 
-// collapse the auto-created stored_text widget out of the layout (pool_id trick)
+// fully hide the auto-created stored_text widget (same as the pool node's
+// pool_id): getVisibleWidgets() filters on `hidden`, so it's dropped from both
+// draw and layout — computeSize alone (or type="hidden") does NOT hide it.
+// Serialization still iterates all widgets, so stored_text is saved/sent.
 function hideStoredWidget(node) {
   const w = widgetByName(node, "stored_text");
-  if (w) w.computeSize = () => [0, -4];
+  if (!w) return;
+  w.hidden = true;
+  w.computeSize = () => [0, -4];
 }
 
 // reflect the persisted protected/stored_text state into the editor + UI
