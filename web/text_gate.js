@@ -32,7 +32,9 @@ const MARGIN = 10;          // ComfyUI DOM-widget inset, matches the other nodes
 // `protected` (BOOLEAN toggle) + `stored_text` (hidden STRING) are real backend
 // widgets. When protected, the node acts as a plain text node: it outputs
 // stored_text and ignores upstream (no pause). The DOM textarea is the visible
-// editor and mirrors its value into stored_text so it persists and reaches run().
+// editor and mirrors its value into stored_text on EVERY change (typing, upstream
+// arrival, Pass) — so the editor content survives refresh / workflow reload in
+// BOTH modes (stored_text also reaches run() when protected).
 
 function widgetByName(node, name) {
   return node.widgets?.find((w) => w.name === name);
@@ -59,15 +61,13 @@ function hideStoredWidget(node) {
   w.computeSize = () => [0, -4];
 }
 
-// reflect the persisted protected/stored_text state into the editor + UI
+// reflect the persisted stored_text + mode into the editor + UI. The editor text
+// is restored in BOTH modes so it survives a refresh / workflow reload; the mode
+// only selects the UI state (protected vs idle waiting-for-a-run).
 function applyPersistedMode(node) {
   if (!node._tg) return;
-  if (isProtected(node)) {
-    node._tg.area.value = widgetByName(node, "stored_text")?.value ?? "";
-    setState(node, "protected");
-  } else {
-    setState(node, "idle");
-  }
+  node._tg.area.value = widgetByName(node, "stored_text")?.value ?? "";
+  setState(node, isProtected(node) ? "protected" : "idle");
 }
 
 // ---- server call ------------------------------------------------------------
@@ -182,6 +182,7 @@ function setupTextGateNode(node) {
   pass.className = "tgate-pass";
   pass.textContent = "▶ Pass";
   pass.onclick = async () => {
+    syncStored(node);                 // persist the passed text so a reload keeps it
     await postPass(node, area.value);
     setState(node, "passed");
   };
@@ -265,6 +266,7 @@ app.registerExtension({
       } else {
         node._tg.area.value = d.text || "";
       }
+      syncStored(node);   // persist the shown text so a refresh/reload keeps it
       setState(node, "paused");
       try { node._tg.area.focus(); } catch (err) { /* ignore */ }
     });
