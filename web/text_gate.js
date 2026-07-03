@@ -170,8 +170,17 @@ function setupTextGateNode(node) {
   const area = document.createElement("textarea");
   area.className = "tgate-area";
   area.placeholder = "waiting for a run…";
-  // don't let typing/space toggle node selection or graph shortcuts
-  area.onkeydown = (e) => e.stopPropagation();
+  // Stop keys from reaching litegraph (so typing/space can't toggle node
+  // selection or fire canvas shortcuts) — EXCEPT ComfyUI's prompt-weighting
+  // shortcut (Ctrl/Cmd+↑/↓). That handler is a global `window` keydown listener
+  // that wraps the selection in (token:weight); a blanket stopPropagation here
+  // kept it from ever bubbling up, so weighting didn't work in this editor.
+  // Its execCommand edit fires our oninput, so the weighted text still syncs.
+  area.onkeydown = (e) => {
+    const isWeight = (e.ctrlKey || e.metaKey) &&
+                     (e.key === "ArrowUp" || e.key === "ArrowDown");
+    if (!isWeight) e.stopPropagation();
+  };
   // keep the hidden stored_text widget mirrored so edits persist + reach run()
   area.oninput = () => syncStored(node);
 
