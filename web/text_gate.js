@@ -255,11 +255,18 @@ function setupTextGateNode(node) {
   syncWidgetWidth(node);
 }
 
+// Build marker — lets you confirm the browser loaded THIS build (not a cached
+// old copy). If the editor comes back empty after reload but you don't see this
+// line in the devtools console, your tab is running stale JS: hard-refresh
+// (Ctrl/Cmd+Shift+R).
+const BUILD = "2026-07-03 persist+weight";
+
 app.registerExtension({
   name: "datasete.gates.textgate",
 
   // one global socket listener: route the server's pause event to the node
   setup() {
+    console.info(`[datasete.textgate] loaded build ${BUILD}`);
     api.addEventListener("datasete-textgate-show", (e) => {
       const d = e.detail || {};
       const node = app.graph?.getNodeById?.(parseInt(d.id, 10));
