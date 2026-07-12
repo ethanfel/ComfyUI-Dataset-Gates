@@ -72,3 +72,32 @@ def test_wait_should_cancel_raises():
     with pytest.raises(gb.GateCancelled):
         gb.GateBus.wait("7", should_cancel=lambda: True)
     assert gb.GateBus.cancelled is False
+
+
+def test_token_payload_roundtrip_and_context():
+    token = gb.GateBus.arm_token("chooser", context=4)
+    assert gb.GateBus.token_context("chooser", token) == 4
+    assert gb.GateBus.put_token_payload("chooser", token, (0, 3)) is True
+    assert gb.GateBus.wait_token_payload("chooser", token) == (0, 3)
+    gb.GateBus.disarm_token("chooser", token)
+    assert gb.GateBus.token_context("chooser", token) is None
+
+
+def test_stale_token_cannot_answer_or_cancel_new_run():
+    old_token = gb.GateBus.arm_token("chooser", context=2)
+    new_token = gb.GateBus.arm_token("chooser", context=5)
+
+    assert gb.GateBus.put_token_payload("chooser", old_token, [0]) is False
+    assert gb.GateBus.cancel_token("chooser", old_token) is False
+    assert gb.GateBus.token_context("chooser", new_token) == 5
+    with pytest.raises(gb.GateCancelled):
+        gb.GateBus.wait_token_payload("chooser", old_token)
+    gb.GateBus.disarm_token("chooser", new_token)
+
+
+def test_token_cancel_only_cancels_matching_waiter():
+    token = gb.GateBus.arm_token("chooser", context=1)
+    assert gb.GateBus.cancel_token("chooser", token) is True
+    with pytest.raises(gb.GateCancelled):
+        gb.GateBus.wait_token_payload("chooser", token)
+    gb.GateBus.disarm_token("chooser", token)

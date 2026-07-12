@@ -16,6 +16,8 @@ if __package__:
         NODE_DISPLAY_NAME_MAPPINGS as _GATE_NAMES
     from .gates.textgate import NODE_CLASS_MAPPINGS as _TEXT_NODES, \
         NODE_DISPLAY_NAME_MAPPINGS as _TEXT_NAMES
+    from .gates.image_chooser import NODE_CLASS_MAPPINGS as _CHOOSER_NODES, \
+        NODE_DISPLAY_NAME_MAPPINGS as _CHOOSER_NAMES
     from .gates.profile_node import NODE_CLASS_MAPPINGS as _PROF_NODES, \
         NODE_DISPLAY_NAME_MAPPINGS as _PROF_NAMES
     from .gates.bucket_node import NODE_CLASS_MAPPINGS as _BUCKET_NODES, \
@@ -27,11 +29,11 @@ if __package__:
     from .gates import profiles_routes  # noqa: F401  (registers /grid_pool/profiles/*)
 
     NODE_CLASS_MAPPINGS = {**_POOL_NODES, **_LOADER_NODES, **_GATE_NODES,
-                           **_TEXT_NODES, **_PROF_NODES, **_BUCKET_NODES,
-                           **_SC_NODES}
+                           **_TEXT_NODES, **_CHOOSER_NODES, **_PROF_NODES,
+                           **_BUCKET_NODES, **_SC_NODES}
     NODE_DISPLAY_NAME_MAPPINGS = {**_POOL_NAMES, **_LOADER_NAMES, **_GATE_NAMES,
-                                  **_TEXT_NAMES, **_PROF_NAMES, **_BUCKET_NAMES,
-                                  **_SC_NAMES}
+                                  **_TEXT_NAMES, **_CHOOSER_NAMES, **_PROF_NAMES,
+                                  **_BUCKET_NAMES, **_SC_NAMES}
 else:  # pragma: no cover - exercised only under pytest collection
     NODE_CLASS_MAPPINGS = {}
     NODE_DISPLAY_NAME_MAPPINGS = {}

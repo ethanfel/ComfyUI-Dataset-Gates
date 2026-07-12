@@ -4,7 +4,7 @@ A suite of custom nodes for **curating, loading, and gating image datasets** in
 ComfyUI — built for human-in-the-loop inpaint/sort pipelines where you review
 images, route them, and reuse them across workflows without rewiring.
 
-All nodes appear under the **“Datasete Gates”** category.
+All nodes appear under the **“Dataset Gates”** category.
 
 ## Nodes at a glance
 
@@ -14,6 +14,7 @@ All nodes appear under the **“Datasete Gates”** category.
 | **Pool Profile** | `PoolProfile` | Companion node: create/select/manage **named profiles** so a pool's images can be reused in any workflow and moved between machines. |
 | **Folder Image Loader** | `FolderImageLoader` | Loads an image by index from a folder (fixed or auto-advancing), with its sidecar `.txt` caption and alpha mask. |
 | **Image Gate (Manual Router)** | `ImageGate` | Pauses the run and lets you **click a button to route** the image down one of up to 10 outputs; optional gate-time mask; Stop cancels. |
+| **Image Chooser Gate (Batch)** | `ImageChooserGate` | Pauses the run, displays every image in an incoming batch, and passes the **selected subset** onward as a batch. |
 | **Text Gate (Manual Pass)** | `TextGate` | Pauses the run, shows the incoming text in an **editable** box, and passes it on a click; any-type `signal` in/out for ordering. |
 
 ## Install
@@ -172,6 +173,33 @@ silently skipped. Built for manual dataset sorting.
 
 ---
 
+## Image Chooser Gate (Batch)
+
+Pauses the running prompt and shows the complete incoming image batch as a
+scrollable thumbnail grid. Click one or more thumbnails, then click **Pass
+selected** to emit just those images as a new batch.
+
+### Inputs / Outputs
+
+| Port | Type | Description |
+|------|------|-------------|
+| `images` (input) | IMAGE | The batch to review. It must contain at least one image. |
+| `images` (output) | IMAGE | The selected images as a batch, in their original input order. |
+
+### How it works
+
+- Click a thumbnail to select or deselect it. **Select all** and **Clear** help
+  with larger batches; at least one image is required before passing.
+- Each new run starts with an empty selection, so a stale choice cannot be
+  applied to a different batch. The gate always pauses and is never cached.
+- The browser receives only small JPEG thumbnails. The output comes directly
+  from the original tensor, so choosing images does not resize or recompress
+  them.
+- **Stop** cancels the run. After passing, **Run from here** queues the workflow
+  again and presents a fresh choice.
+
+---
+
 ## Text Gate (Manual Pass)
 
 Pauses the run, shows the incoming text in an **editable** box, and emits it
@@ -200,10 +228,11 @@ Pauses every run; ComfyUI's global **Cancel** unblocks it cleanly (no deadlock).
 
 ### Human-in-the-loop gates
 
-Image/Text Gate **block the executor thread** during a run and wait for a click
-(a small server-side waiter + a `/datasete_gate/*` route the UI posts to). Stop /
-Cancel raise ComfyUI's `InterruptProcessingException`. These nodes always
-re-execute (`IS_CHANGED = nan`) so they pause every time.
+Image Gate, Image Chooser Gate, and Text Gate **block the executor thread**
+during a run and wait for a click (a small server-side waiter plus an HTTP route
+the UI posts to). Stop / Cancel raise ComfyUI's
+`InterruptProcessingException`. These nodes always re-execute
+(`IS_CHANGED = nan`) so they pause every time.
 
 ### Mask polarity
 
@@ -242,9 +271,11 @@ Layout:
 - `gates/pool.py` — pure pool storage (manifest, add/remove/reorder/active/label/mask).
 - `gates/profiles.py` — pure profile registry + dir ops + zip export/import.
 - `gates/scan.py` — pure folder scan (natural sort, depth, sidecar, index).
-- `gates/gate_bus.py` — pure blocking choice/text/mask waiter for the gates.
+- `gates/gate_bus.py` — pure blocking choice/text/mask/selection waiter for the gates.
 - `gates/imaging.py` — torch/PIL tensor loaders.
-- `gates/node.py` · `loader.py` · `gate.py` · `textgate.py` · `profile_node.py` — the nodes.
+- `gates/node.py` · `loader.py` · `gate.py` · `image_chooser.py` · `textgate.py` ·
+  `profile_node.py` — the nodes.
 - `gates/handlers.py` · `routes.py` · `gate_server.py` · `profiles_routes.py` — aiohttp glue
-  (`/grid_pool/*`, `/datasete_gate/*`, `/grid_pool/profiles/*`).
+  (`/grid_pool/*`, `/datasete_gate/*`, `/datasete_image_chooser/*`,
+  `/grid_pool/profiles/*`).
 - `web/*.js` — the in-node UIs (grid + MaskEditor, gate previews, profile dropdown).
